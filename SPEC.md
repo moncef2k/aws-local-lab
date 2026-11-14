@@ -92,5 +92,21 @@ check their current docs before writing config).
   - an architecture diagram (Mermaid)
   - a table mapping each local component to its AWS equivalent
   - what this setup can't simulate (multi-AZ, a real CDN, IAM, etc.)
-- `docs/LEARNING.md` — for each phase, what concept it teaches and what I'd change to
-  deploy it on real AWS
+- **Lab tutorials in `docs/labs/`** — a learning course written while building, so that at the end
+  I can rebuild the whole project on my own from the docs alone. See "Lab documentation" in
+  CLAUDE.md for the rules. Planned labs (adjust in PLAN.md if the grouping should differ):
+  - `00-setup.md` — tools, Docker basics, how the repo and this course are organised
+  - `01-containers.md` — containers vs VMs (EC2), images, Dockerfile, the first API
+  - `02-load-balancing.md` — ALB, health checks, replicas
+  - `03-networking.md` — VPC, public/private subnets, security groups → Docker networks
+  - `04-database.md` — RDS, migrations, persistence with volumes
+  - `05-caching.md` — ElastiCache, cache-aside pattern
+  - `06-object-storage.md` — S3, buckets, presigned URLs → MinIO
+  - `07-queues-workers.md` — SQS, async jobs, workers
+  - `08-frontend-cdn.md` — S3 static hosting + CloudFront, caching headers
+  - `09-monitoring.md` — CloudWatch → Prometheus, Grafana, Loki
+  - `10-testing-load.md` — testing an architecture, failure tests, k6 load tests
+  - `11-kubernetes.md` — EKS concepts: pods, deployments, services, ingress, probes
+  - `12-autoscaling.md` — Auto Scaling → HPA
+  - `13-terraform-emulator.md` — Infrastructure as Code, Terraform, local AWS emulator
+  - `README.md` — course index, learning path, prerequisites; `glossary.md` — every AWS/infra term used

@@ -37,6 +37,35 @@ For each step:
 ### Resuming after /clear or a new session
 - Read `PLAN.md` and continue with the first unchecked step, following these same rules.
 
+## Lab documentation (part of every step)
+The project is also a course. `docs/labs/` must let me rebuild everything on my own later, while
+learning the theory. Follow `docs/labs/_TEMPLATE.md` for every lab.
+
+- **Doc commit after each code commit.** After the step commit, update the matching lab file in a
+  second commit: `docs: lab NN step N - <title>`. Then review and stop, as usual.
+  The ~150-line limit applies to code commits, not to docs.
+- **Theory first.** When a lab starts, write sections 1–3 (what you will learn, theory, how AWS
+  does it, how we reproduce it, a Mermaid diagram) before the steps. Explain for a beginner.
+- **Self-sufficient steps.** Each step shows: why, the exact commands, the full content of new
+  files (or the changed part with its path), the expected output, and what it means. Someone
+  with only the doc and an empty folder must be able to reproduce it. Link the reference commit.
+- **Real outputs only.** Paste output you actually captured while building, trimmed. Never invent output.
+- **Screenshots:**
+  - Terminal results → text code blocks (searchable), not images.
+  - Web UIs (frontend, Grafana, Prometheus, MinIO console, …) → capture PNGs with a Playwright
+    script in a pinned Docker image (`scripts/screenshot.sh <url> <out.png>`), saved under
+    `docs/labs/images/lab-NN/`. Keep images small (PNG, about 1280px wide).
+  - Things a script cannot capture (Docker Desktop, Windows dialogs) → add
+    `> 📸 TODO(you): <what to capture> → save as images/lab-NN/<name>.png` and list these
+    TODOs in your report so I can take them.
+  - Never capture secrets (passwords, tokens) in screenshots or outputs.
+- **Troubleshooting is gold.** Every real error we hit goes in the lab's Troubleshooting table,
+  with the cause and the fix.
+- **End of each lab:** complete verify, real-AWS mapping, clean-up, 3–5 quiz questions with
+  answers in `<details>`, an optional exercise, and links to official docs. Update
+  `docs/labs/README.md` (index + progress) and `docs/glossary.md`.
+- If a step changes something an earlier lab already explains, update that lab too.
+
 ## Project tooling (in `.claude/`)
 - **Skills:** `/next-step` runs one step of the loop above; `/explain-aws` explains the AWS
   equivalent of the latest step; `/status` shows a health table of the lab.
