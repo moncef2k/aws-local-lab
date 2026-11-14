@@ -1,10 +1,10 @@
 # AWS local lab - entry points. Run `make help` to list the targets.
 #
 # Recipes always run in Git Bash, so they behave the same whether `make` is started from
-# PowerShell, cmd or Git Bash. On Windows the path uses the 8.3 short name (PROGRA~1) because
-# GNU Make cannot handle a space in SHELL ("C:/Program Files/...").
+# PowerShell, cmd or Git Bash. Adjust the path if Git is installed elsewhere. (GNU Make 4.4.1
+# from winget accepts the space in "Program Files"; tested from PowerShell and Git Bash.)
 ifeq ($(OS),Windows_NT)
-SHELL := C:/PROGRA~1/Git/bin/bash.exe
+SHELL := C:/Program Files/Git/bin/bash.exe
 else
 SHELL := /bin/bash
 endif
