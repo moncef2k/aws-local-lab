@@ -62,7 +62,7 @@ Nothing will be installed system-wide without asking you first.
   (index, learning path, prerequisites, progress table) and `docs/glossary.md` (initial terms).
   *Check:* run the script against a throw-away local page (also one reached via a `*.localhost` name) → PNG
   exists, is ~1280px wide, no secrets visible.
-- [ ] **1. Repo skeleton.** 🔀 `Makefile` with `SHELL` set to Git Bash (explicit Windows path, so recipes behave
+- [x] **1. Repo skeleton.** 🔀 `Makefile` with `SHELL` set to Git Bash (explicit Windows path, so recipes behave
   the same under cmd/PowerShell/Git Bash; `up down logs clean` real; `test load-test` stubs), `.env.example`,
   folder layout (`api/ worker/ frontend/ lb/ monitoring/ tests/ k8s/ terraform/`) with `.gitkeep`s.
   *Check:* `make --version`, `make help` / `make up` on an empty compose file run without error.

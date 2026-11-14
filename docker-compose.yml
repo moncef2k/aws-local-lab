@@ -1,0 +1,3 @@
+# Services are added lab by lab (first one: `api`, Lab 01 step 3).
+name: aws-local-lab
+services: {}
