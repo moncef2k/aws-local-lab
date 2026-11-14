@@ -21,3 +21,7 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Code local files
+.claude/settings.local.json
+.claude/.last-size-check

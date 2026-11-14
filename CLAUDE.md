@@ -21,9 +21,12 @@ For each step:
 3. Tick the step in `PLAN.md`.
 4. Make ONE git commit with a clear message, e.g.
    `step 4: add Postgres container on private network`.
-5. STOP. Tell me:
+5. Ask the `step-reviewer` subagent to review the commit. If it says FAIL, fix it in a
+   small follow-up commit and review again (at most twice).
+6. STOP. Tell me:
    - what changed and why (explain the AWS concept it represents),
    - how you verified it,
+   - the reviewer's verdict,
    - the command(s) I can run to check it myself.
    Then WAIT.
 
@@ -33,6 +36,17 @@ For each step:
 
 ### Resuming after /clear or a new session
 - Read `PLAN.md` and continue with the first unchecked step, following these same rules.
+
+## Project tooling (in `.claude/`)
+- **Skills:** `/next-step` runs one step of the loop above; `/explain-aws` explains the AWS
+  equivalent of the latest step; `/status` shows a health table of the lab.
+- **Subagent:** `step-reviewer` (read-only) reviews each step commit.
+- **Hooks:** `guard-bash.sh` blocks destructive git/docker/rm commands, reading `.env`, and any
+  AWS/Terraform command not aimed at the local emulator; `protect-secrets.sh` blocks reading or
+  editing secret files; `check-step-size.sh` warns when a commit is too big; `notify.ps1` shows a
+  Windows notification when you stop.
+- If a hook blocks you, do not try to get around it with another command. Explain to me what
+  you wanted to do and why, and let me decide.
 
 ## Safety and quality rules
 - Before the first step, check my OS, CPU, RAM, free disk space, and whether Docker,
