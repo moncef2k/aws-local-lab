@@ -27,7 +27,7 @@ Terms are explained in the [glossary](../glossary.md).
 | Lab | Topic | AWS service(s) it stands for | Status |
 |---|---|---|---|
 | [00](./00-setup.md) | Setup: tools, Docker basics, how the course is organised | — | ✅ done |
-| 01 | Containers and the first API | EC2 / ECS, ECR | ⬜ planned |
+| [01](./01-containers.md) | Containers and the first API | EC2 / ECS, ECR | 🚧 in progress |
 | 02 | Load balancing and health checks | ALB, target groups | ⬜ planned |
 | 03 | Networking: public and private networks | VPC, subnets, security groups | ⬜ planned |
 | 04 | Database, migrations, persistence | RDS | ⬜ planned |
@@ -59,7 +59,7 @@ exact step list is in [`PLAN.md`](../../PLAN.md).
   `> 📸 TODO(you): …` in the lab, to be added by hand.
 
 ## Progress
-Updated at the end of every lab. Last update: Lab 00 complete (step 1, repo skeleton).
+Updated at the end of every lab. Last update: Lab 01, step 2 (minimal API image).
 
 - [x] Course scaffolding: lab index, glossary, screenshot script
 - [x] Lab 00 — Setup: tools, repo skeleton, Makefile

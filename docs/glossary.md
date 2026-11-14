@@ -17,15 +17,18 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
 | **Dockerfile** | The recipe to build an image. | AWS: same, then pushed to ECR | 01 |
 | **`.env` file** | A local file of settings and secrets, read by Docker Compose. Never committed to Git; `.env.example` is the committed template. | Local only (AWS: Secrets Manager / Parameter Store) | 00 |
+| **ECR** (Elastic Container Registry) | AWS's private store for container images. | Local: the Docker image store | 01 |
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
+| **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
 | **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
 | **IAM** | AWS users, roles and permissions. | Not simulated in this lab (fake credentials only) | 13 |
 | **IaC** (Infrastructure as Code) | Describing infrastructure in files that a tool applies, instead of clicking in a console. | AWS: CloudFormation · Local: Terraform | 13 |
 | **Image** | A read-only package (app + dependencies) from which containers start. | AWS: ECR stores them · Local: built by Docker | 01 |
+| **Layer (image)** | One Dockerfile instruction, stored as a cached piece of the image. Put rarely-changing steps first so rebuilds are fast. | Docker concept | 01 |
 | **k3d** | Runs a small Kubernetes cluster (k3s) inside Docker containers. | Local stand-in for EKS | 11 |
 | **k6** | A load-testing tool: simulates many users and reports latency and errors. | Local tool | 10 |
 | **Load balancer** | See ALB. | | 02 |
@@ -34,6 +37,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **MinIO** | An S3-compatible object store you can run locally. | Local stand-in for S3 | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
+| **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
 | **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: MinIO | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
@@ -46,4 +50,5 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
+| **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **Volume** | Storage that outlives a container, so data survives a restart. | AWS: EBS · Local: Docker named volume | 04 |
