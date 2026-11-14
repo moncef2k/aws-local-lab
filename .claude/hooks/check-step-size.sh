@@ -20,9 +20,9 @@ echo "$head" > "$marker"
 MAX_LINES=150
 MAX_FILES=5
 
-# Ignore PLAN.md ticks and lock files, which are not "real" changes.
+# Ignore PLAN.md ticks, lock files and lab docs, which are not "real" changes.
 stat=$(git show --shortstat --format= HEAD -- . \
-  ':(exclude)PLAN.md' ':(exclude)*lock*' ':(exclude)*.lock' 2>/dev/null)
+  ':(exclude)PLAN.md' ':(exclude)*lock*' ':(exclude)*.lock' ':(exclude)docs/**' 2>/dev/null)
 
 files=$(printf '%s' "$stat" | grep -Eo '[0-9]+ files? changed' | grep -Eo '[0-9]+')
 ins=$(printf '%s' "$stat" | grep -Eo '[0-9]+ insertions?' | grep -Eo '[0-9]+')

@@ -13,14 +13,19 @@ Do exactly ONE step of the plan, following the rules in CLAUDE.md.
    3 files, stop, propose how to split it in PLAN.md, and wait for my answer.
 4. Verify it works with a real command (curl, test, `docker compose ps`, …) and keep the output.
 5. Tick the step in `PLAN.md`, then make one commit: `step N: <short description>`.
-6. Ask the `step-reviewer` subagent to review the commit. If its verdict is FAIL, fix the problem
-   in a follow-up commit (`step N: fix <what>`), then review again (at most twice).
-7. Report to me, briefly:
-   - **What changed:** files and the reason for each
+6. Update the matching lab in `docs/labs/` (following `docs/labs/_TEMPLATE.md`) and commit it
+   separately as `docs: lab NN step N - <title>`. Use only outputs you actually captured in step 4.
+7. Ask the `step-reviewer` subagent to review the step commit and its docs commit. If its verdict
+   is FAIL, fix the problem in a follow-up commit (`step N: fix <what>`, or `docs: lab NN step N - fix
+   <what>` for the lab), then review again (at most twice).
+8. Report to me, briefly:
+   - **What changed:** files and the reason for each (code commit and docs commit)
    - **AWS concept:** which AWS service or idea this step stands in for (one or two sentences)
    - **Verified with:** the command and the key line of its output
    - **Reviewer:** the verdict
    - **Check it yourself:** 1–3 commands I can run
-8. STOP and wait. Do not start the next step.
+   - **Screenshots for you:** every `📸 TODO(you)` left in the lab doc that I need to take
+     (what to capture and the file name), or "none"
+9. STOP and wait. Do not start the next step.
 
 Extra instructions from me for this step (may be empty): $ARGUMENTS
