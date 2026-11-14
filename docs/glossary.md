@@ -16,17 +16,20 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
 | **Dockerfile** | The recipe to build an image. | AWS: same, then pushed to ECR | 01 |
+| **`.env` file** | A local file of settings and secrets, read by Docker Compose. Never committed to Git; `.env.example` is the committed template. | Local only (AWS: Secrets Manager / Parameter Store) | 00 |
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
+| **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
 | **IAM** | AWS users, roles and permissions. | Not simulated in this lab (fake credentials only) | 13 |
 | **IaC** (Infrastructure as Code) | Describing infrastructure in files that a tool applies, instead of clicking in a console. | AWS: CloudFormation · Local: Terraform | 13 |
 | **Image** | A read-only package (app + dependencies) from which containers start. | AWS: ECR stores them · Local: built by Docker | 01 |
 | **k3d** | Runs a small Kubernetes cluster (k3s) inside Docker containers. | Local stand-in for EKS | 11 |
 | **k6** | A load-testing tool: simulates many users and reports latency and errors. | Local tool | 10 |
 | **Load balancer** | See ALB. | | 02 |
+| **Make / Makefile** | A tool that runs named recipes (`make up`) defined in a `Makefile`. Used here as a shortcut for long Docker commands. | Local tool | 00 |
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
 | **MinIO** | An S3-compatible object store you can run locally. | Local stand-in for S3 | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
