@@ -16,6 +16,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
 | **Dockerfile** | The recipe to build an image. | AWS: same, then pushed to ECR | 01 |
+| **Environment variable** | A named setting handed to a program from outside (`UVICORN_LOG_LEVEL=warning`), so the same image can behave differently per environment. | AWS: task definition `environment`, Parameter Store | 01 |
 | **`.env` file** | A local file of settings and secrets, read by Docker Compose. Never committed to Git; `.env.example` is the committed template. | Local only (AWS: Secrets Manager / Parameter Store) | 00 |
 | **ECR** (Elastic Container Registry) | AWS's private store for container images. | Local: the Docker image store | 01 |
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
@@ -38,6 +39,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
+| **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
 | **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: MinIO | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |

@@ -1,16 +1,15 @@
 # Lab 01 — Containers and the first API
 
 > **AWS equivalent:** EC2 / ECS / EKS (where containers run), ECR (where images are stored)  ·  **Time:** ~40 min  ·  **Difficulty:** ★☆☆
-> **Builds on:** [Lab 00](./00-setup.md)  ·  **Reference solution:** commit `7ae5145` (step 2) on `dev`
->
-> 🚧 **Work in progress.** Step 2 is written. Step 3 (the Compose service), verify, quiz and the closing
-> sections are added with it.
+> **Builds on:** [Lab 00](./00-setup.md)  ·  **Reference solution:** commits `7ae5145` (step 2), `b502370` (step 3) on `dev`
 
 ## 1. What you will learn
 - Explain the difference between a virtual machine (EC2) and a container, and why an app is "packaged" as an image.
 - Write a `Dockerfile` that builds a small web API, with pinned versions and a non-root user.
 - Build an image, run a container from it and call it with `curl`.
 - Understand why the API answers `/whoami` with a different name in every container (it matters in Lab 02).
+- Describe a service in `docker-compose.yml`: image, environment variables, published port, health check.
+- Configure a container through environment variables instead of rebuilding the image.
 
 ## 2. Theory
 
@@ -49,6 +48,8 @@ Three rules make an image trustworthy, and this lab applies all three:
 | Image build | `docker build` in CI, then push to ECR | `docker build` on your laptop |
 | Where containers run | ECS/EKS on Fargate or EC2 | Docker Desktop (step 2), then Docker Compose (step 3) |
 | Task definition / pod spec | ECS task definition / Kubernetes pod | `docker run` flags (step 2), `docker-compose.yml` (step 3) |
+| Settings | task definition `environment`, Parameter Store / Secrets Manager | `environment:` in Compose, values from `.env` |
+| Health check | task definition `healthCheck`, target group check | Compose `healthcheck:` |
 | The app | your code | FastAPI (a Python web framework) served by Uvicorn |
 
 ### 2.4 Diagram
@@ -172,5 +173,168 @@ The container id and the build step numbers on your machine will differ.
   the container has no published port unless you add `-p`, and we restrict that to `127.0.0.1`.
 - FastAPI also generates interactive documentation at `/docs` (we saw HTTP 200 for it); we do not use it yet.
 
+### Step 3 — Describe the API as a Compose service
+**Why:** `docker run` with five flags is hard to remember and to share. A Compose file writes the same
+decisions down once — which image, which settings, which port, how to tell it is healthy — so that `make up`
+reproduces them every time. It is the local equivalent of an ECS *task definition*. Later labs add the
+database, cache and the rest as more services in this one file.
+
+**Do it:** replace the contents of `docker-compose.yml` (reference commit `b502370`):
+
+```yaml
+name: aws-local-lab
+
+services:
+  api:
+    build: ./api
+    image: aws-local-lab-api:0.1.0
+    environment:
+      # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
+      UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+    ports:
+      # TEMPORARY: published on your machine only (127.0.0.1). Lab 02 puts a load balancer in front
+      # and removes this mapping.
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      # The slim image has no curl: use Python's standard library.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+```
+
+Add the two new settings to `.env.example` (and, if you want to change them, to your own `.env`):
+
+```bash
+# API (Lab 01)
+API_HOST_PORT=8000
+API_LOG_LEVEL=info
+```
+
+Start it, wait for `healthy`, call it:
+
+```bash
+make up
+docker compose ps
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/whoami
+```
+
+**Expected result:**
+```text
+ Network aws-local-lab_default Created
+ Container aws-local-lab-api-1 Created
+ Container aws-local-lab-api-1 Started
+
+NAME                  IMAGE                     COMMAND                  SERVICE   CREATED         STATUS                   PORTS
+aws-local-lab-api-1   aws-local-lab-api:0.1.0   "uvicorn main:app --…"   api       8 seconds ago   Up 7 seconds (healthy)   127.0.0.1:8000->8000/tcp
+
+{"status":"ok"}
+{"hostname":"b1899752e6f6"}
+```
+
+Now prove that the settings really come from the environment, without touching the image. A variable set in
+your shell takes priority over the default in the Compose file:
+
+```bash
+API_LOG_LEVEL=warning API_HOST_PORT=8001 make up
+docker compose ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+curl http://127.0.0.1:8001/whoami
+curl -s -o /dev/null -w '%{http_code}\n' --max-time 3 http://127.0.0.1:8000/health
+docker compose logs api --no-log-prefix
+make up        # back to the defaults
+```
+```text
+ Container aws-local-lab-api-1 Recreated
+SERVICE   STATUS                   PORTS
+api       Up 7 seconds (healthy)   127.0.0.1:8001->8000/tcp
+{"hostname":"5fee6e2e4a26"}
+000
+```
+`000` is curl's way of saying "no connection": port 8000 is no longer open. The last `docker compose logs`
+printed nothing: at level `warning`, Uvicorn no longer writes its INFO lines (start-up message and one line
+per request).
+
+**What just happened:**
+- `make up` ran `docker compose up -d --build --remove-orphans`: Compose built the image from `./api`,
+  created a private network `aws-local-lab_default` and started the container
+  `aws-local-lab-api-1` (`<project>-<service>-<number>`; the number matters in Lab 02 with replicas).
+- `ports: "127.0.0.1:8000:8000"` = *host address : host port : container port*. Without the `127.0.0.1:` prefix
+  Docker would publish the port on every network interface of your machine, i.e. to your whole Wi-Fi.
+- The **health check** runs a tiny Python command inside the container every 10 s. After 3 failures in a row
+  the container is marked `unhealthy`. Compose shows `(healthy)` once the first check succeeds. Docker only
+  *reports* health here; in Lab 02 the load balancer uses the same idea to stop sending traffic to a broken
+  copy. The image has no `curl`, so the check uses Python's standard library.
+- `${API_LOG_LEVEL:-info}` means "the variable `API_LOG_LEVEL` if set (from your shell or from `.env`),
+  otherwise `info`". The defaults make the project start even if you never created a `.env`.
+- Changing a variable made Compose **recreate** the container (`Recreated`), because its configuration
+  changed. The image was not rebuilt — that is the point of configuring through environment variables: the
+  same image runs everywhere, only the settings differ (as with an ECS task definition per environment).
+- Uvicorn reads any command-line option from a `UVICORN_<OPTION>` variable, which is why `UVICORN_LOG_LEVEL`
+  works without a line of code.
+- `/whoami` shows a new hostname after each recreate: a new container, a new id.
+
+## 5. Verify it works
+```bash
+make up
+docker compose ps                     # api: Up ... (healthy)
+curl -s http://127.0.0.1:8000/health  # {"status":"ok"}
+curl -s http://127.0.0.1:8000/whoami  # {"hostname":"<container id>"}
+docker compose exec api id            # uid=10001(app): not root
+make down
+```
+
 ## 6. Troubleshooting
-No errors were met in step 2. Every real error from this lab is added here as it happens.
+No errors were met in steps 2 and 3. Every real error from this lab is added here as it happens.
+
+## 7. Going to real AWS
+- **What changes:** build the image in CI and push it to **ECR**; describe the service as an **ECS task
+  definition** (image, CPU/RAM, `environment`, `healthCheck`) run by an ECS **service** on Fargate — or as a
+  Kubernetes Deployment on EKS (Lab 11). Secrets would come from Secrets Manager or Parameter Store, not from
+  a `.env` file.
+- **What this lab does not simulate:** IAM roles for tasks, multiple Availability Zones, image scanning in ECR,
+  autoscaling of the service, private networking (Lab 03).
+- **Rough cost:** Fargate bills per vCPU-second and GB-second while a task runs (a small always-on task is
+  roughly a few USD per month); ECR storage is a few cents per GB-month. See the
+  [Fargate pricing](https://aws.amazon.com/fargate/pricing/) and [ECR pricing](https://aws.amazon.com/ecr/pricing/) pages.
+
+## 8. Clean up
+```bash
+make down                              # stops and removes the container and network, keeps volumes
+docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
+```
+
+## 9. Check your understanding
+1. Why is a container much lighter than a virtual machine?
+2. In the Dockerfile, why is `requirements.txt` copied and installed before `main.py` is copied?
+3. What does `127.0.0.1:8000:8000` mean, and what would change without `127.0.0.1:`?
+4. Why do we change the log level with an environment variable instead of editing the code?
+5. What does the Compose `healthcheck` tell you, and what does it *not* do on its own?
+
+<details><summary>Answers</summary>
+
+1. It shares the host's kernel and only isolates a process (own filesystem, network, process list); a VM
+   simulates a whole computer with its own operating system.
+2. Docker caches each layer. Dependencies change rarely, code often: with this order, editing `main.py`
+   re-uses the cached layer with the installed libraries.
+3. host address : host port : container port. Without `127.0.0.1:` the port is published on all interfaces of
+   your machine, so other devices on your network could reach the API.
+4. The same image can then run in every environment; only the settings change. No rebuild, no code change.
+5. It marks the container `healthy` or `unhealthy` by running a command at intervals. By itself Docker only
+   reports it (Compose does not restart or reroute anything); a load balancer or orchestrator acts on it (Lab 02).
+
+</details>
+
+## 10. Exercises (optional)
+- Run `API_HOST_PORT=8002 make up` and check that the API answers on port 8002 and not on 8000.
+- Add a `GET /version` route to `api/main.py` that returns the string `0.1.0`, rebuild with `make up`, and
+  notice from the build output which Dockerfile layers were cached.
+
+## 11. Further reading
+- [Dockerfile reference](https://docs.docker.com/reference/dockerfile/) and
+  [Dockerfile best practices](https://docs.docker.com/build/building/best-practices/)
+- [Compose file reference](https://docs.docker.com/reference/compose-file/) (`services`, `ports`, `healthcheck`)
+- [Amazon ECS task definitions](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html)
+  and [Amazon ECR](https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html)
+- [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn settings](https://www.uvicorn.org/settings/)
