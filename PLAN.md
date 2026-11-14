@@ -55,7 +55,7 @@ Nothing will be installed system-wide without asking you first.
 ## Phase 1 — Core architecture with Docker Compose
 
 ### Lab 00 — Setup (tools, Docker basics, how the course works)
-- [ ] **0. Course scaffolding.** Code commit: `scripts/screenshot.sh <url> <out.png>` (Playwright in a pinned
+- [x] **0. Course scaffolding.** Code commit: `scripts/screenshot.sh <url> <out.png>` (Playwright in a pinned
   Docker image, ~1280px PNG, output under `docs/labs/images/lab-NN/`). For any `*.localhost` host in the URL it
   passes `--add-host <name>:host-gateway` to `docker run`, so the container can capture pages served by the
   load balancer on the host. Docs commit: `docs/labs/README.md`
