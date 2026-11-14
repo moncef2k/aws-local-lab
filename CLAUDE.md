@@ -36,6 +36,7 @@ For each step:
 
 ### Resuming after /clear or a new session
 - Read `PLAN.md` and continue with the first unchecked step, following these same rules.
+  Check the step's Jira ticket status too (see "Jira") and bring it in line with the real state.
 
 ## Lab documentation (part of every step)
 The project is also a course. `docs/labs/` must let me rebuild everything on my own later, while
@@ -65,6 +66,40 @@ learning the theory. Follow `docs/labs/_TEMPLATE.md` for every lab.
   answers in `<details>`, an optional exercise, and links to official docs. Update
   `docs/labs/README.md` (index + progress) and `docs/glossary.md`.
 - If a step changes something an earlier lab already explains, update that lab too.
+
+## Jira (kanban board, project key `AWSLAB`)
+Jira shows the **status** of the work; `PLAN.md` stays the **source of truth for content** (what each step is).
+If the two disagree about what a step is, `PLAN.md` wins and the ticket is updated to match.
+Columns: **To Do → In Progress → In Review → Done**.
+The board uses French status names. Mapping, with the transition id to pass to `transitionJiraIssue`
+(these are global transitions, valid from any status; site `moncefspace.atlassian.net`):
+
+| Column | Jira status | Transition id |
+|---|---|---|
+| To Do | À faire | `11` |
+| In Progress | En cours | `21` |
+| In Review | Revue en cours | `31` |
+| Done | Terminé(e) | `41` |
+
+Issue types: **Epic** for labs, **Tâche** (Task) for steps, linked with `parent`. A blocked ticket gets the
+**Flagged → Impediment** field (`customfield_10021`) set, plus a comment saying why.
+
+- **Structure:** each lab = an Epic (`Lab NN – <title>`); each `PLAN.md` step = a ticket in that epic, titled
+  `Step N – <title>`, description = the step text and its check from `PLAN.md`, label `lab-NN`.
+- **Keys:** the ticket key is recorded next to its step in `PLAN.md` (e.g. ``- [x] **2. Minimal API.** `AWSLAB-20` ``; epics are on the lab headings).
+  When a step is split or added in `PLAN.md`, create or update its ticket too.
+- **Workflow per step:**
+  1. When you start the step, move its ticket to **In Progress**.
+  2. After the code commit, the docs commit and the `step-reviewer` pass, move it to **In Review** and add a
+     comment with the same report you give me: what changed, verified with, reviewer verdict,
+     check-it-yourself commands, and the commit hashes.
+  3. When I say "next" (or clearly approve), move the ticket to **Done** *before* starting the next step.
+- **If blocked:** flag the ticket (impediment), comment why, and tell me. Do not work around it silently.
+- **Commit messages** start with the ticket key: `AWSLAB-22 step 4: add Nginx load balancer` and
+  `AWSLAB-22 docs: lab 02 step 4 - Nginx load balancer`.
+- Jira comments follow the same rules as lab docs: real outputs only, never secrets, tokens or `.env` content.
+- If Jira is unreachable or not authenticated, say so and continue the step without it. Do not invent ticket
+  keys; tell me so the board can be brought up to date afterwards.
 
 ## Project tooling (in `.claude/`)
 - **Skills:** `/next-step` runs one step of the loop above; `/explain-aws` explains the AWS
