@@ -57,3 +57,12 @@ For each step:
 - Use fake/local credentials only. Never connect to a real AWS account.
 - If something does not work on my machine, explain why instead of silently skipping it.
 - Never commit generated data, volumes, or large binaries.
+
+## Git branches
+- `main` is protected on GitHub: it only changes through pull requests. Never commit to `main`
+  and never push to it.
+- Work and commit on the `dev` branch. Before the first step of a session, check with
+  `git branch --show-current` that you are on `dev`; if not, tell me instead of switching
+  on your own when there are uncommitted changes.
+- Do not push unless I ask. When I ask to "open a PR", push `dev` and give me the
+  GitHub compare link (`https://github.com/moncef2k/aws-local-lab/compare/main...dev`).
