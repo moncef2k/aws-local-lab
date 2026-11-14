@@ -1,0 +1,23 @@
+# Secrets
+.env
+*.pem
+*.key
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Dependencies / build output
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
