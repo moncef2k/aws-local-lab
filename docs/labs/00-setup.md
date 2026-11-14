@@ -157,12 +157,24 @@ mkdir /tmp/site && echo '<h1>screenshot.sh test page</h1>' > /tmp/site/index.htm
 scripts/screenshot.sh http://demo.localhost:8099/ /tmp/out/demo.png
 ```
 
-**Expected result:** (output of the test run, paths shortened)
-```text
-saved /out/demo-localhost.png
-screenshot written to .../scratchpad/out/demo-localhost.png
+Then check the result, and try plain `localhost` too:
+
+```bash
+scripts/screenshot.sh http://localhost:8099/ /tmp/out/demo-plain.png
+file /tmp/out/demo.png /tmp/out/demo-plain.png
 ```
-The PNG is 1280 × 800 pixels and about 15 KB. The same command with `http://localhost:8099/` also works.
+
+**Expected result:**
+```text
+saved /out/demo.png
+screenshot written to /tmp/out/demo.png
+saved /out/demo-plain.png
+screenshot written to /tmp/out/demo-plain.png
+/tmp/out/demo.png:       PNG image data, 1280 x 800, 8-bit/color RGB, non-interlaced
+/tmp/out/demo-plain.png: PNG image data, 1280 x 800, 8-bit/color RGB, non-interlaced
+```
+Both PNGs are 1280 × 800 pixels (about 10 KB for this tiny page). Open one to confirm it shows the test
+heading and nothing else.
 
 **What just happened:**
 - The script starts a throw-away container from the pinned Playwright image, mounts the output folder at `/out`,
