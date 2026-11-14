@@ -72,7 +72,7 @@ Nothing will be installed system-wide without asking you first.
 ### Lab 01 — Containers & the first API
 - [x] **2. Minimal API.** FastAPI app with `GET /health` and `GET /whoami` (hostname), pinned deps,
   `Dockerfile` (pinned `python:3.12-slim-…`, non-root user). *Check:* `docker build` + `docker run` + curl both routes.
-- [ ] **3. Compose service for the API.** 🔀 `docker-compose.yml` with `api` (config from env vars, temporary
+- [x] **3. Compose service for the API.** 🔀 `docker-compose.yml` with `api` (config from env vars, temporary
   `127.0.0.1` port mapping). *Check:* `docker compose ps` healthy, curl `/whoami`. Push `dev` + PR link.
 
 ### Lab 02 — Load balancing (ALB)
