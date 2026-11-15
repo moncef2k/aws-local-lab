@@ -79,7 +79,7 @@ Nothing will be installed system-wide without asking you first.
   `127.0.0.1` port mapping). *Check:* `docker compose ps` healthy, curl `/whoami`. Push `dev` + PR link.
 
 ### Lab 02 — Load balancing (ALB) · epic `AWSLAB-6`
-- [ ] **4. Nginx load balancer.** `AWSLAB-22` `lb/nginx.conf` + `lb` service on port 80; API port mapping removed.
+- [x] **4. Nginx load balancer.** `AWSLAB-22` `lb/nginx.conf` + `lb` service on port 80; API port mapping removed.
   Pin an Nginx version whose `upstream` supports `server <name> resolve` (open-source Nginx ≥ 1.27.3 — I'll
   confirm in the release notes before pinning), with `resolver 127.0.0.11 valid=5s;` and an upstream `zone`.
   *Check:* `nginx -t`; `curl localhost/health` works, `localhost:<api port>` no longer does.
