@@ -267,7 +267,15 @@ The same count in PowerShell (remember `curl.exe`, see Troubleshooting):
 1..30 | ForEach-Object { curl.exe -s http://localhost/whoami } | Group-Object | Select-Object Count, Name
 ```
 
-**Expected result:**
+**Expected result** (the PowerShell command prints the same counts as a table):
+```text
+Count Name
+----- ----
+   10 {"hostname":"6da7385d6575"}
+   10 {"hostname":"b94e31d3fb8b"}
+   10 {"hostname":"fee0c8303a43"}
+```
+and for the Git Bash commands:
 ```text
 NAME                  SERVICE   STATUS                   PORTS
 aws-local-lab-api-1   api       Up 7 seconds (healthy)   8000/tcp
@@ -292,6 +300,14 @@ Three different hostnames, ten requests each. Your container ids will differ.
   (`docker inspect -f '{{.State.StartedAt}}' aws-local-lab-lb-1` shows its start time, and `docker compose logs lb` has
   no reload or signal line). It found the two new replicas by itself through DNS. Without `resolve`, Nginx would
   have kept sending everything to the single address it saw at start-up.
+  What we captured when checking this (your timestamps will differ):
+  ```text
+  $ docker inspect -f '{{.State.StartedAt}}' aws-local-lab-lb-1
+  2026-11-15T13:36:39.983552865Z          # started 6 minutes before the replicas were added
+  $ docker compose logs lb --no-log-prefix | grep -E 'notice|warn|error|emerg|signal|reload'
+  ... [notice] 1#1: nginx/1.30.6
+  ... [notice] 1#1: start worker processes          # all stamped 13:36:40; no "signal" or "reload" line
+  ```
 - In the `make up` output, Compose printed `Waiting` and then `Healthy` for each of `api-1`, `api-2` and `api-3`: that
   is the `depends_on … service_healthy` rule from step 4, now applied to every replica.
 
