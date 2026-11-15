@@ -174,6 +174,11 @@ The container id and the build step numbers on your machine will differ.
 - FastAPI also generates interactive documentation at `/docs` (we saw HTTP 200 for it); we do not use it yet.
 
 ### Step 3 — Describe the API as a Compose service
+> **Changed in Lab 02, step 4.** The temporary `ports:` mapping and the `API_HOST_PORT` setting shown in
+> this step were removed when the load balancer arrived: the API is now only reachable through the load
+> balancer (`http://localhost/…`). The commands below are exactly what worked at the end of Lab 01
+> (commit `b502370`); to follow them literally, check out that commit.
+
 **Why:** `docker run` with five flags is hard to remember and to share. A Compose file writes the same
 decisions down once — which image, which settings, which port, how to tell it is healthy — so that `make up`
 reproduces them every time. It is the local equivalent of an ECS *task definition*. Later labs add the
@@ -276,6 +281,8 @@ per request).
 - `/whoami` shows a new hostname after each recreate: a new container, a new id.
 
 ## 5. Verify it works
+> From Lab 02, step 4 on, use `http://localhost/health` and `http://localhost/whoami` (port 80, through the load balancer) instead of port 8000.
+
 ```bash
 make up
 docker compose ps                     # api: Up ... (healthy)

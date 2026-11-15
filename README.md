@@ -3,8 +3,8 @@
 A local copy of an AWS web hosting architecture (load balancer, private network, database, cache, object
 storage, queue, monitoring, Kubernetes, Terraform), built step by step on a laptop as a hands-on course.
 
-> **Status:** Phase 1 (Docker Compose) · **2 of 14 labs complete** · **4 of 60 steps done**.
-> Next: [Lab 02, step 4](PLAN.md) (Nginx load balancer). Everything not marked ✅ below is **planned, not built yet**.
+> **Status:** Phase 1 (Docker Compose) · **2 of 14 labs complete**, Lab 02 in progress · **5 of 60 steps done**.
+> Next: [Lab 02, step 5](PLAN.md) (three API replicas). Everything not marked ✅ below is **planned, not built yet**.
 
 Everything runs locally with fake credentials. Nothing here ever touches a real AWS account.
 
@@ -41,19 +41,19 @@ flowchart LR
   mon[Prometheus, Grafana, Loki] -.-> api
   classDef built fill:#d4edda,stroke:#2e7d32,color:#000
   classDef planned fill:#f5f5f5,stroke:#999,stroke-dasharray:4 3,color:#555
-  class api built
-  class lb,fe,worker,db,cache,s3,mon planned
+  class api,lb built
+  class fe,worker,db,cache,s3,mon planned
 ```
 
-**Today:** a single API container, published on `127.0.0.1:8000`. There is no load balancer, no private network
-and no data service yet; those arrive lab by lab. Phases 2 and 3 (Kubernetes, Terraform) are described in the roadmap.
+**Today:** one API container behind an Nginx load balancer, which is the only published port (`127.0.0.1:80`). There is
+no private network, replicas or data service yet; those arrive lab by lab. Phases 2 and 3 (Kubernetes, Terraform) are described in the roadmap.
 
 ## Local ↔ AWS mapping
 | Component | AWS service | Local tool | Status |
 |---|---|---|---|
 | Container image and runtime | ECR, ECS / EKS / EC2 | Docker, Docker Compose | ✅ built (Lab 01) |
 | API (`/health`, `/whoami`) | your app on ECS | FastAPI + Uvicorn | ✅ built (Lab 01) |
-| Load balancer | ALB, target groups | Nginx | 🔜 planned (Lab 02) |
+| Load balancer | ALB, target groups | Nginx | 🚧 in progress (Lab 02: proxy built, replicas and failover next) |
 | Private network | VPC, subnets, security groups | Docker networks | 🔜 planned (Lab 03) |
 | Database | RDS | PostgreSQL | 🔜 planned (Lab 04) |
 | Cache | ElastiCache | Redis | 🔜 planned (Lab 05) |
@@ -76,7 +76,7 @@ troubleshooting, a quiz. Start at the [course index](docs/labs/README.md); terms
 |---|---|---|
 | 00 | Setup: tools, Docker basics, how the course works | [Lab 00](docs/labs/00-setup.md) |
 | 01 | Containers and the first API | [Lab 01](docs/labs/01-containers.md) |
-| 02 | Load balancing and health checks | coming soon |
+| 02 | Load balancing and health checks | [Lab 02](docs/labs/02-load-balancing.md) (in progress) |
 | 03 | Networking: public and private | coming soon |
 | 04 | Database, migrations, persistence | coming soon |
 | 05 | Caching | coming soon |
@@ -106,24 +106,26 @@ cd aws-local-lab
 git checkout dev          # work in progress lives on dev until each lab's pull request is merged
 cp .env.example .env      # optional: the defaults also work without it
 make up
-curl http://127.0.0.1:8000/whoami
+curl http://localhost/whoami
 make down
 ```
 
-`/whoami` answers with the hostname of the API container, for example `{"hostname":"61e97f37b565"}`. `make help` lists
+`/whoami` answers with the hostname of the API container, proxied by Nginx, for example `{"hostname":"71efbb43a2d7"}`.
+If port 80 is taken on your machine, set `LB_HOST_PORT=8080` in `.env` and use `http://localhost:8080`. `make help` lists
 the targets. `make test` and `make load-test` are not implemented yet and fail on purpose.
-Details, versions and troubleshooting: [Lab 00](docs/labs/00-setup.md) and [Lab 01](docs/labs/01-containers.md).
+Details, versions and troubleshooting: [Lab 00](docs/labs/00-setup.md), [Lab 01](docs/labs/01-containers.md), [Lab 02](docs/labs/02-load-balancing.md).
 
 ## Repo structure
 | Path | What it is |
 |---|---|
 | `api/` | FastAPI app and its Dockerfile (built) |
+| `lb/` | Nginx load balancer configuration (built; in progress) |
 | `docs/` | the course: [`labs/`](docs/labs/README.md) tutorials and the [glossary](docs/glossary.md) |
 | `scripts/` | helper scripts (`screenshot.sh`: page screenshots with Playwright in Docker) |
 | `docker-compose.yml`, `Makefile`, `.env.example` | how the stack is started and configured |
 | `PLAN.md`, `SPEC.md` | the step-by-step plan (source of truth for progress) and the original brief |
 | `CLAUDE.md`, `.claude/` | the working rules and tooling used to build the project with Claude Code |
-| `worker/`, `frontend/`, `lb/`, `monitoring/`, `tests/`, `k8s/`, `terraform/` | empty placeholders, filled in by later labs |
+| `worker/`, `frontend/`, `monitoring/`, `tests/`, `k8s/`, `terraform/` | empty placeholders, filled in by later labs |
 
 ## How this project is built
 - **Small steps.** [`PLAN.md`](PLAN.md) breaks the work into 60 steps, each a small change with a check that proves it works.
@@ -137,7 +139,7 @@ Details, versions and troubleshooting: [Lab 00](docs/labs/00-setup.md) and [Lab 
 **Phase 1: Docker Compose**
 - [x] [Lab 00](docs/labs/00-setup.md): setup, tools, repo skeleton
 - [x] [Lab 01](docs/labs/01-containers.md): containers and the first API
-- [ ] Lab 02: load balancing (ALB)
+- [ ] [Lab 02](docs/labs/02-load-balancing.md): load balancing (ALB), in progress (1 of 4 steps done)
 - [ ] Lab 03: networking (VPC)
 - [ ] Lab 04: database (RDS)
 - [ ] Lab 05: caching (ElastiCache)
