@@ -368,7 +368,7 @@ One request out of 120 hung until curl gave up. Why:
 
 (Results vary: only requests that happen to be sent to the dead address suffer. In our run it was one.)
 
-**Do it:** in `lb/nginx.conf`, change the `server` line of the upstream and add four lines in the `location` block
+**Do it:** in `lb/nginx.conf`, change the `server` line of the upstream and add three directives (with their comments) in the `location` block
 (reference commits `9c14efe` and `41bb1c7`):
 
 ```nginx
@@ -436,6 +436,9 @@ And in the load balancer's log (`docker compose logs lb`), once per run, trimmed
 - After `docker start`, the replica answered again: all three hostnames appear in the 30 requests we sent 12 seconds after
   the restart. The container keeps its id (so its hostname is the same); a restarted container may get a different IP address,
   which is exactly what `resolve` + `valid=5s` handles without any reload.
+- `max_fails=1` is strict: because `proxy_next_upstream` counts `http_502`, `http_503` and `http_504` as failures, a single
+  such answer from a perfectly healthy replica also takes it out of rotation for 10 seconds. That is fine for a lab with
+  three replicas; a busy production setup would tolerate a few more failures (`max_fails=3`, for example) before removing a server.
 - **The limits of passive checking:** Nginx must lose a real request to find out; that request pays the connect timeout
   (here about 1.2 s). An AWS ALB checks `/health` on a timer (active), so users normally never hit a dead target. Open-source
   Nginx has no active checks; the retry makes the cost small, not zero.
