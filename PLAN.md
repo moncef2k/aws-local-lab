@@ -85,7 +85,7 @@ Nothing will be installed system-wide without asking you first.
   *Check:* `nginx -t`; `curl localhost/health` works, `localhost:<api port>` no longer does.
 - [x] **5. Three API replicas.** `AWSLAB-23` `deploy.replicas: 3`; the upstream `resolve` re-reads Docker DNS so all 3 IPs
   are used. *Check:* 30 curls to `/whoami` show 3 distinct hostnames.
-- [ ] **6. Health checks & failover.** `AWSLAB-24` Container `healthcheck`, Nginx `max_fails` / `fail_timeout` /
+- [x] **6. Health checks & failover.** `AWSLAB-24` Container `healthcheck`, Nginx `max_fails` / `fail_timeout` /
   `proxy_next_upstream`. Lab 02 explains why `resolve` + `valid=5s` matters: a restarted replica gets a new IP
   and rejoins within ~5 s without reloading Nginx (plain `proxy_pass` would keep the stale IP forever).
   *Check:* `docker kill` one replica while curling in a loop → 0 failed requests; restart → it rejoins.
