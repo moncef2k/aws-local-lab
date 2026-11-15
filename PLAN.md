@@ -83,7 +83,7 @@ Nothing will be installed system-wide without asking you first.
   Pin an Nginx version whose `upstream` supports `server <name> resolve` (open-source Nginx ≥ 1.27.3 — I'll
   confirm in the release notes before pinning), with `resolver 127.0.0.11 valid=5s;` and an upstream `zone`.
   *Check:* `nginx -t`; `curl localhost/health` works, `localhost:<api port>` no longer does.
-- [ ] **5. Three API replicas.** `AWSLAB-23` `deploy.replicas: 3`; the upstream `resolve` re-reads Docker DNS so all 3 IPs
+- [x] **5. Three API replicas.** `AWSLAB-23` `deploy.replicas: 3`; the upstream `resolve` re-reads Docker DNS so all 3 IPs
   are used. *Check:* 30 curls to `/whoami` show 3 distinct hostnames.
 - [ ] **6. Health checks & failover.** `AWSLAB-24` Container `healthcheck`, Nginx `max_fails` / `fail_timeout` /
   `proxy_next_upstream`. Lab 02 explains why `resolve` + `valid=5s` matters: a restarted replica gets a new IP

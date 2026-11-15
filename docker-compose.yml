@@ -4,6 +4,9 @@ services:
   api:
     build: ./api
     image: aws-local-lab-api:0.1.0
+    deploy:
+      # Three identical copies. The load balancer finds them all through the DNS name "api".
+      replicas: 3
     environment:
       # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
       UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
