@@ -236,4 +236,6 @@ The container id and timings on your machine will differ.
   (First lines only: `worker_processes auto` starts one worker per CPU thread, so you will see more.)
 
 ## 6. Troubleshooting
-No errors were met in step 4. Every real error from this lab is added here as it happens.
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Invoke-WebRequest : Missing an argument for parameter 'SessionVariable'` when running `curl -s -o /dev/null -w …` | In Windows PowerShell, `curl` is an alias of `Invoke-WebRequest`, which has different options (`-s` is read as `-SessionVariable`). The commands in this course are written for Bash. | Run them in Git Bash, or in PowerShell call the real program `curl.exe` and write `NUL` instead of `/dev/null`: `curl.exe -s -o NUL -w "%{http_code}`n" --max-time 3 http://localhost:8000/health` (prints `000`, exit code 7: no connection). |

@@ -98,7 +98,7 @@ Built and tested on **Windows 11** with:
 | Git (with Git Bash) | 2.48.1 |
 | GNU Make | 4.4.1 (`winget install --id ezwinports.make -e`) |
 
-Start Docker Desktop, then, from PowerShell or Git Bash:
+Start Docker Desktop, then, from Git Bash (in PowerShell, write `curl.exe` instead of `curl`; `make` works in both):
 
 ```bash
 git clone https://github.com/moncef2k/aws-local-lab.git

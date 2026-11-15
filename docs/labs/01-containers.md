@@ -293,7 +293,9 @@ make down
 ```
 
 ## 6. Troubleshooting
-No errors were met in steps 2 and 3. Every real error from this lab is added here as it happens.
+No errors were met while building steps 2 and 3. One thing to know: the `curl` commands in this lab are written for Bash. In
+Windows PowerShell, `curl` is an alias of `Invoke-WebRequest` and rejects options such as `-s` or `-i`; type `curl.exe`
+instead (see the Troubleshooting table in [Lab 00](./00-setup.md#6-troubleshooting)).
 
 ## 7. Going to real AWS
 - **What changes:** build the image in CI and push it to **ECR**; describe the service as an **ECS task
