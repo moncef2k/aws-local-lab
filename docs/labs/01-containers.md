@@ -334,7 +334,8 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 </details>
 
 ## 10. Exercises (optional)
-- Run `API_HOST_PORT=8002 make up` and check that the API answers on port 8002 and not on 8000.
+- Run `API_LOG_LEVEL=warning make up`, send a request, and check with `docker compose logs api` that the per-request
+  INFO lines are gone. Then run `make up` again without the variable and see them come back.
 - Add a `GET /version` route to `api/main.py` that returns the string `0.1.0`, rebuild with `make up`, and
   notice from the build output which Dockerfile layers were cached.
 
