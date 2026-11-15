@@ -1,9 +1,9 @@
 # Lab 02 — Load balancing (ALB)
 
 > **AWS equivalent:** Application Load Balancer (ALB), listeners, target groups  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commit `06f598b` (step 4) on `dev`
+> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commits `06f598b` (step 4), `23b768a` (step 5) on `dev`
 >
-> 🚧 **Work in progress.** Step 4 (the load balancer) is written. Steps 5–7 (replicas, failover, tests) and the
+> 🚧 **Work in progress.** Steps 4–5 (the load balancer, three replicas) are written. Steps 6–7 (failover, tests) and the
 > closing sections (verify, real-AWS mapping, clean-up, quiz) are added as they are built.
 
 ## 1. What you will learn
@@ -68,7 +68,7 @@ flowchart LR
   you((You)) -->|127.0.0.1:80| lb[lb: Nginx<br/>listener + upstream]
   lb -->|Docker DNS: api| api[api: FastAPI]
 ```
-Step 5 turns the single `api` box into three replicas; the diagram does not change otherwise.
+From step 5 on, the `api` box stands for three identical containers that all answer to the name `api`.
 
 ## 3. Prerequisites
 - [Lab 01](./01-containers.md) completed: `make up` starts a healthy `api` container.
@@ -234,6 +234,85 @@ The container id and timings on your machine will differ.
   nginx       31 nginx: worker process
   ```
   (First lines only: `worker_processes auto` starts one worker per CPU thread, so you will see more.)
+
+### Step 5 — Three API replicas
+**Why:** a load balancer with one server behind it only forwards. With three identical copies, a request can be
+answered by any of them, and one copy can fail without the site going down (step 6). In AWS this is the *desired count*
+of an ECS service, or the size of an Auto Scaling group.
+
+**Do it:** add three lines to the `api` service in `docker-compose.yml` (reference commit `23b768a`):
+
+```yaml
+  api:
+    build: ./api
+    image: aws-local-lab-api:0.1.0
+    deploy:
+      # Three identical copies. The load balancer finds them all through the DNS name "api".
+      replicas: 3
+    environment:
+      # …unchanged…
+```
+
+Start the stack and send 30 requests, counting how many answers came from each hostname (Git Bash):
+
+```bash
+make up
+docker compose ps
+for i in $(seq 1 30); do curl -s http://localhost/whoami; echo; done | sort | uniq -c
+```
+
+The same count in PowerShell (remember `curl.exe`, see Troubleshooting):
+
+```powershell
+1..30 | ForEach-Object { curl.exe -s http://localhost/whoami } | Group-Object | Select-Object Count, Name
+```
+
+**Expected result:**
+```text
+NAME                  SERVICE   STATUS                   PORTS
+aws-local-lab-api-1   api       Up 7 seconds (healthy)   8000/tcp
+aws-local-lab-api-2   api       Up 6 seconds (healthy)   8000/tcp
+aws-local-lab-api-3   api       Up 6 seconds (healthy)   8000/tcp
+aws-local-lab-lb-1    lb        Up 5 minutes (healthy)   127.0.0.1:80->80/tcp
+
+     10 {"hostname":"6da7385d6575"}
+     10 {"hostname":"b94e31d3fb8b"}
+     10 {"hostname":"fee0c8303a43"}
+```
+Three different hostnames, ten requests each. Your container ids will differ.
+
+**What just happened:**
+- Compose started three containers from the same image, named `<project>-<service>-<number>`. All three are
+  reachable on the Docker network under the single DNS name `api`.
+- When asked for `api`, Docker's DNS returns **all three addresses**. Because the `server api:8000 resolve` line
+  (step 4) makes Nginx turn every address into a server of the upstream, Nginx now has three servers and, by default,
+  hands requests out in turn (**round-robin**). That is why every hostname got exactly a third of the requests.
+- Look at `aws-local-lab-lb-1`: it says `Up 5 minutes` while the replicas say `Up 7 seconds`. The load balancer had been
+  started earlier, when only one `api` container existed, and was **not restarted or reloaded** for this step
+  (`docker inspect -f '{{.State.StartedAt}}' aws-local-lab-lb-1` shows its start time, and `docker compose logs lb` has
+  no reload or signal line). It found the two new replicas by itself through DNS. Without `resolve`, Nginx would
+  have kept sending everything to the single address it saw at start-up.
+- In the `make up` output, Compose printed `Waiting` and then `Healthy` for each of `api-1`, `api-2` and `api-3`: that
+  is the `depends_on … service_healthy` rule from step 4, now applied to every replica.
+
+**Try it: scale up and down while the stack runs.** `--scale` overrides `replicas` for one command:
+
+```bash
+docker compose up -d --scale api=5 --no-recreate
+# wait ~15 s for the new containers to become healthy and for DNS to refresh (the resolver refreshes every 5 s)
+for i in $(seq 1 50); do curl -s http://localhost/whoami; echo; done | sort | uniq -c
+docker compose up -d --scale api=3 --no-recreate
+```
+```text
+     10 {"hostname":"09cd98baefc7"}
+     10 {"hostname":"2ca7b51b9bf6"}
+     10 {"hostname":"6da7385d6575"}
+      9 {"hostname":"b94e31d3fb8b"}
+     11 {"hostname":"fee0c8303a43"}
+```
+Five hostnames, roughly an equal share each. After scaling back to three and waiting 8 seconds, 30 requests all
+returned HTTP 200, and Nginx's log still contained no reload. What happens to requests sent *during* the few seconds
+between a container stopping and the next DNS refresh is the subject of step 6 (health checks and failover).
 
 ## 6. Troubleshooting
 | Symptom | Likely cause | Fix |
