@@ -36,8 +36,8 @@ clean: ## Stop the lab AND delete its data volumes (asks first)
 	  [ "$$answer" = "yes" ] || { echo "aborted"; exit 1; }
 	$(COMPOSE) down -v --remove-orphans
 
-test: ## Run all tests in tests/ (not implemented yet, see PLAN.md step 7)
-	@echo "make test: not implemented yet" >&2; exit 1
+test: ## Run all tests in tests/ (the lab must be up: make up)
+	@fail=0; for t in tests/*.sh; do echo "== $$t"; bash "$$t" || fail=1; done; exit $$fail
 
 load-test: ## Run the k6 load test (not implemented yet, see PLAN.md step 37)
 	@echo "make load-test: not implemented yet" >&2; exit 1

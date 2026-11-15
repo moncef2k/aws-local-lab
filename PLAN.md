@@ -89,7 +89,7 @@ Nothing will be installed system-wide without asking you first.
   `proxy_next_upstream`. Lab 02 explains why `resolve` + `valid=5s` matters: a restarted replica gets a new IP
   and rejoins within ~5 s without reloading Nginx (plain `proxy_pass` would keep the stale IP forever).
   *Check:* `docker kill` one replica while curling in a loop → 0 failed requests; restart → it rejoins.
-- [ ] **7. Tests for Lab 02.** `AWSLAB-25` 🔀 `tests/02_load_balancing.sh` and `tests/02_failover.sh` (includes the rejoin
+- [x] **7. Tests for Lab 02.** `AWSLAB-25` 🔀 `tests/02_load_balancing.sh` and `tests/02_failover.sh` (includes the rejoin
   after restart); wire `make test`. *Check:* `make test` green. Push `dev` + PR link.
 
 ### Lab 03 — Networking (VPC, subnets, security groups) · epic `AWSLAB-7`
