@@ -1,0 +1,20 @@
+name: aws-local-lab
+
+services:
+  api:
+    build: ./api
+    image: aws-local-lab-api:0.1.0
+    environment:
+      # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
+      UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+    ports:
+      # TEMPORARY: published on your machine only (127.0.0.1). Lab 02 puts a load balancer in front
+      # and removes this mapping.
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      # The slim image has no curl: use Python's standard library.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
