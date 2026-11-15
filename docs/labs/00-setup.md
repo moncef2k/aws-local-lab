@@ -395,6 +395,9 @@ make up            # "no services defined yet …", exit code 0
 make down          # exit code 0
 make test          # fails with "not implemented yet" (expected until Lab 02)
 ```
+
+> **Changed in Lab 02, step 7.** `make test` is now real: it runs the scripts in `tests/`. The "not implemented yet"
+> output on this page is what it printed at the end of Lab 00.
 From both PowerShell and Git Bash. `git status` should show only the files of this lab.
 
 ## 6. Troubleshooting

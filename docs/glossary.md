@@ -40,8 +40,9 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
 | **MinIO** | An S3-compatible object store you can run locally. | Local stand-in for S3 | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
-| **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
+| **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
+| **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
 | **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: MinIO | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
@@ -60,5 +61,4 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
-| **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **Volume** | Storage that outlives a container, so data survives a restart. | AWS: EBS · Local: Docker named volume | 04 |

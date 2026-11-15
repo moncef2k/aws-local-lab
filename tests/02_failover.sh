@@ -16,7 +16,8 @@ fi
 url="http://${addr/0.0.0.0/127.0.0.1}"
 
 # The victim: the first api container, and the hostname it answers with (its container id).
-victim=$(docker compose ps -q api | head -n 1)
+victim=$(docker compose ps --status running -q api | head -n 1)
+[ -n "$victim" ] || { echo "  FAIL  no running api container: start the lab with 'make up' first"; exit 1; }
 victim_host=$(docker inspect -f '{{.Config.Hostname}}' "$victim")
 trap 'docker start "$victim" >/dev/null 2>&1' EXIT
 

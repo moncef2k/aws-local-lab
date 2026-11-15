@@ -525,7 +525,8 @@ fi
 url="http://${addr/0.0.0.0/127.0.0.1}"
 
 # The victim: the first api container, and the hostname it answers with (its container id).
-victim=$(docker compose ps -q api | head -n 1)
+victim=$(docker compose ps --status running -q api | head -n 1)
+[ -n "$victim" ] || { echo "  FAIL  no running api container: start the lab with 'make up' first"; exit 1; }
 victim_host=$(docker inspect -f '{{.Config.Hostname}}' "$victim")
 trap 'docker start "$victim" >/dev/null 2>&1' EXIT
 
@@ -659,7 +660,7 @@ docker compose port api 8000           # prints :0, the API is not published
   AWS WAF, and cross-zone behaviour.
 - **Rough cost:** an ALB bills per hour plus per "load balancer capacity unit"; an idle one is roughly 16 to 20 USD per
   month, more with traffic (check the [ELB pricing page](https://aws.amazon.com/elasticloadbalancing/pricing/); prices vary by
-  region and change). It is not covered by the free tier for long, so delete it after experimenting.
+  region and change). Check what free tier or credits your account has, and delete the ALB after experimenting.
 
 ## 8. Clean up
 ```bash
