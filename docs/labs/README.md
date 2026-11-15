@@ -59,7 +59,7 @@ exact step list is in [`PLAN.md`](../../PLAN.md).
   `> 📸 TODO(you): …` in the lab, to be added by hand.
 
 ## Progress
-Updated at the end of every lab. Last update: Lab 02 in progress (step 5, three API replicas).
+Updated at the end of every lab. Last update: Lab 02 in progress (step 6, health checks and failover).
 
 - [x] Course scaffolding: lab index, glossary, screenshot script
 - [x] Lab 00 — Setup: tools, repo skeleton, Makefile

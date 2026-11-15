@@ -3,8 +3,8 @@
 A local copy of an AWS web hosting architecture (load balancer, private network, database, cache, object
 storage, queue, monitoring, Kubernetes, Terraform), built step by step on a laptop as a hands-on course.
 
-> **Status:** Phase 1 (Docker Compose) · **2 of 14 labs complete**, Lab 02 in progress · **6 of 60 steps done**.
-> Next: [Lab 02, step 6](PLAN.md) (health checks and failover). Everything not marked ✅ below is **planned, not built yet**.
+> **Status:** Phase 1 (Docker Compose) · **2 of 14 labs complete**, Lab 02 in progress · **7 of 60 steps done**.
+> Next: [Lab 02, step 7](PLAN.md) (automated tests for the load balancer). Everything not marked ✅ below is **planned, not built yet**.
 
 Everything runs locally with fake credentials. Nothing here ever touches a real AWS account.
 
@@ -45,15 +45,16 @@ flowchart LR
   class fe,worker,db,cache,s3,mon planned
 ```
 
-**Today:** three API containers behind an Nginx load balancer, which is the only published port (`127.0.0.1:80`). There
-is no failover test, private network or data service yet; those arrive lab by lab. Phases 2 and 3 (Kubernetes, Terraform) are described in the roadmap.
+**Today:** three API containers behind an Nginx load balancer, which is the only published port (`127.0.0.1:80`). If a
+replica dies, requests are retried on another one. There are no automated tests yet, and no private network or data
+service; those arrive lab by lab. Phases 2 and 3 (Kubernetes, Terraform) are described in the roadmap.
 
 ## Local ↔ AWS mapping
 | Component | AWS service | Local tool | Status |
 |---|---|---|---|
 | Container image and runtime | ECR, ECS / EKS / EC2 | Docker, Docker Compose | ✅ built (Lab 01) |
 | API (`/health`, `/whoami`) | your app on ECS | FastAPI + Uvicorn | ✅ built (Lab 01) |
-| Load balancer | ALB, target groups | Nginx | 🚧 in progress (Lab 02: proxy and three replicas built, failover next) |
+| Load balancer | ALB, target groups | Nginx | 🚧 in progress (Lab 02: proxy, three replicas and failover built, tests next) |
 | Private network | VPC, subnets, security groups | Docker networks | 🔜 planned (Lab 03) |
 | Database | RDS | PostgreSQL | 🔜 planned (Lab 04) |
 | Cache | ElastiCache | Redis | 🔜 planned (Lab 05) |
@@ -139,7 +140,7 @@ Details, versions and troubleshooting: [Lab 00](docs/labs/00-setup.md), [Lab 01]
 **Phase 1: Docker Compose**
 - [x] [Lab 00](docs/labs/00-setup.md): setup, tools, repo skeleton
 - [x] [Lab 01](docs/labs/01-containers.md): containers and the first API
-- [ ] [Lab 02](docs/labs/02-load-balancing.md): load balancing (ALB), in progress (2 of 4 steps done)
+- [ ] [Lab 02](docs/labs/02-load-balancing.md): load balancing (ALB), in progress (3 of 4 steps done)
 - [ ] Lab 03: networking (VPC)
 - [ ] Lab 04: database (RDS)
 - [ ] Lab 05: caching (ElastiCache)

@@ -5,6 +5,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 
 | Term | What it means | AWS service / local stand-in | Lab |
 |---|---|---|---|
+| **Active vs passive health check** | Active: the load balancer calls a health URL on a timer and removes failing servers before users notice (AWS ALB). Passive: it only notices a server is dead when a real request fails (open-source Nginx). | AWS: target group health check · Local: Nginx `max_fails` / `fail_timeout` | 02 |
 | **ALB** (Application Load Balancer) | Receives web traffic and spreads it over several copies of an app; stops sending traffic to broken ones. | AWS: ALB · Local: Nginx | 02 |
 | **Auto Scaling** | Adding or removing copies of an app automatically, based on load. | AWS: Auto Scaling groups · Local: Kubernetes HPA | 12 |
 | **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one. | AWS only — cannot be simulated on one laptop | 03 |
@@ -22,6 +23,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
+| **Failover** | Continuing to serve requests, on the remaining copies, when one copy fails. | AWS: ALB + several targets · Local: Nginx `proxy_next_upstream` | 02 |
 | **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
@@ -49,6 +51,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
+| **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: MinIO | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |

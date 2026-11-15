@@ -1,9 +1,9 @@
 # Lab 02 — Load balancing (ALB)
 
 > **AWS equivalent:** Application Load Balancer (ALB), listeners, target groups  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commits `06f598b` (step 4), `23b768a` (step 5) on `dev`
+> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commits `06f598b` (step 4), `23b768a` (step 5), `9c14efe` + `41bb1c7` (step 6) on `dev`
 >
-> 🚧 **Work in progress.** Steps 4–5 (the load balancer, three replicas) are written. Steps 6–7 (failover, tests) and the
+> 🚧 **Work in progress.** Steps 4–6 (load balancer, three replicas, failover) are written. Step 7 (tests) and the
 > closing sections (verify, real-AWS mapping, clean-up, quiz) are added as they are built.
 
 ## 1. What you will learn
@@ -330,7 +330,118 @@ Five hostnames, roughly an equal share each. After scaling back to three and wai
 returned HTTP 200, and Nginx's log still contained no reload. What happens to requests sent *during* the few seconds
 between a container stopping and the next DNS refresh is the subject of step 6 (health checks and failover).
 
+### Step 6 — Health checks and failover
+**Why:** replicas only help if the load balancer survives losing one. Before changing anything, we ran an experiment on
+the step 5 setup so that you can see the problem first, then the fix.
+
+**Two kinds of health checks, and what each one does here**
+| | Who checks | What it decides | In this lab |
+|---|---|---|---|
+| Container `healthcheck` | Docker runs a command inside the container every 10 s | the status `healthy` / `unhealthy` shown by `docker compose ps`, and `depends_on … service_healthy` | already there since step 3 |
+| Load balancer health check | the load balancer, either by calling `/health` regularly (**active**, what an AWS ALB does) or by noticing failed real requests (**passive**, all that open-source Nginx can do) | whether a server still receives traffic | new in this step: passive |
+
+Nginx does not read Docker's health status; it only learns that a server is dead when a real request to it fails.
+
+**The experiment.** From Git Bash, send 120 requests (one every 0.25 s) while a replica is killed after 8 s and started again
+after 20 s. `--max-time 5` makes curl give up on any request that takes longer than 5 seconds (code `000`):
+
+```bash
+( for i in $(seq 1 120); do curl -s --max-time 5 -o /dev/null -w "%{http_code} %{time_total}\n" http://localhost/whoami; sleep 0.25; done ) > result.txt &
+LOOP=$!
+sleep 8;  docker kill aws-local-lab-api-2
+sleep 12; docker start aws-local-lab-api-2
+wait $LOOP
+awk '{c[$1]++; if ($2>m) m=$2} END {for (k in c) print c[k], "x HTTP", k; print "slowest:", m, "s"}' result.txt
+```
+
+**Before** (the step 5 configuration):
+```text
+1 x HTTP 000
+119 x HTTP 200
+slowest: 5.005340 s
+```
+One request out of 120 hung until curl gave up. Why:
+- `docker kill` removes the container, and with it its IP address. Packets sent to that address are not refused, they simply
+  vanish, so a connection attempt just **waits**.
+- Nginx still has the old address in its list until the next DNS refresh (up to 5 seconds, `valid=5s`).
+- Any request handed to that address waits for Nginx's default connect timeout, **60 seconds**.
+
+(Results vary: only requests that happen to be sent to the dead address suffer. In our run it was one.)
+
+**Do it:** in `lb/nginx.conf`, change the `server` line of the upstream and add four lines in the `location` block
+(reference commits `9c14efe` and `41bb1c7`):
+
+```nginx
+    upstream api {
+        zone api 64k;
+        resolver 127.0.0.11 valid=5s;
+        # Passive health check: after 1 failed attempt, stop using that server for 10 seconds.
+        server api:8000 resolve max_fails=1 fail_timeout=10s;
+    }
+
+    server {
+        listen 80;
+
+        location / {
+            proxy_pass http://api;
+            # A dead replica's IP does not answer at all: give up on it after 1 second, not 60.
+            proxy_connect_timeout 1s;
+            # If a server fails, retry the request on the next one (up to 3 servers in total).
+            # Once a request has been sent to a server, only requests that are safe to repeat
+            # (GET, HEAD, ...) are retried on another one, not a POST.
+            proxy_next_upstream error timeout http_502 http_503 http_504;
+            proxy_next_upstream_tries 3;
+            # (the proxy_set_header lines are unchanged)
+        }
+    }
+```
+
+Apply it **without restarting the load balancer**: test the file, then ask Nginx to reload it:
+
+```bash
+docker compose exec lb nginx -t
+docker compose exec lb nginx -s reload
+docker compose exec lb nginx -T | grep -E 'max_fails|proxy_connect_timeout|proxy_next_upstream'
+```
+```text
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/11/15 13:49:50 [notice] 534#534: signal process started
+        server api:8000 resolve max_fails=1 fail_timeout=10s;
+            proxy_connect_timeout 1s;
+            proxy_next_upstream error timeout http_502 http_503 http_504;
+            proxy_next_upstream_tries 3;
+```
+`nginx -T` prints the configuration Nginx is really running, which proves the reload took effect.
+
+**After** (same experiment, run twice):
+```text
+run 1:  120 x HTTP 200   slowest: 1.217146 s   requests slower than 1 s: 1
+        30 requests after the restart:   9 x 6da7385d6575   10 x b94e31d3fb8b   11 x fee0c8303a43
+run 2:  120 x HTTP 200   slowest: 1.220056 s   requests slower than 1 s: 1
+        30 requests after the restart:  10 x 6da7385d6575   10 x b94e31d3fb8b   10 x fee0c8303a43
+```
+And in the load balancer's log (`docker compose logs lb`), once per run, trimmed:
+```text
+[error] 540#540: *522 upstream timed out (110: Operation timed out) while connecting to upstream, client: 172.22.0.1, server: , request: "GET /whoami HTTP/1.1", upstream: "http://1…
+```
+
+**What just happened:**
+- **No request failed** (120 of 120 returned 200), in both runs.
+- The one unlucky request in each run was handed to the dead address, waited `proxy_connect_timeout` (1 s), failed (the log
+  line above), and was **retried on another replica** (`proxy_next_upstream`). The client only saw a slower answer
+  (about 1.2 s) instead of a timeout.
+- `max_fails=1 fail_timeout=10s` then marked that address as failed for 10 seconds, so the following requests skipped it. A
+  next DNS refresh (within 5 seconds) no longer returns the address, at which point `resolve` takes it out of the list
+  altogether (this follows from the `valid=5s` setting; we did not log that moment).
+- After `docker start`, the replica answered again: all three hostnames appear in the 30 requests we sent 12 seconds after
+  the restart. The container keeps its id (so its hostname is the same); a restarted container may get a different IP address,
+  which is exactly what `resolve` + `valid=5s` handles without any reload.
+- **The limits of passive checking:** Nginx must lose a real request to find out; that request pays the connect timeout
+  (here about 1.2 s). An AWS ALB checks `/health` on a timer (active), so users normally never hit a dead target. Open-source
+  Nginx has no active checks; the retry makes the cost small, not zero.
+
 ## 6. Troubleshooting
 | Symptom | Likely cause | Fix |
 |---|---|---|
+| `grep: C:/Program Files/Git/etc/nginx/nginx.conf: No such file or directory` when running `docker compose exec lb grep … /etc/nginx/nginx.conf` | Git Bash on Windows rewrites arguments that look like Unix paths (`/etc/…`) into Windows paths before Docker sees them. | Switch the conversion off for that command: `MSYS_NO_PATHCONV=1 docker compose exec lb grep -c max_fails /etc/nginx/nginx.conf` (or write the path with two slashes: `//etc/nginx/nginx.conf`). Commands without a path argument, like `nginx -T`, are not affected. |
 | `Invoke-WebRequest : Missing an argument for parameter 'SessionVariable'` when running `curl -s -o /dev/null -w …` | In Windows PowerShell, `curl` is an alias of `Invoke-WebRequest`, which has different options (`-s` is read as `-SessionVariable`). The commands in this course are written for Bash. | Run them in Git Bash, or in PowerShell call the real program `curl.exe` and write `NUL` instead of `/dev/null`: `curl.exe -s -o NUL -w "%{http_code}`n" --max-time 3 http://localhost:8000/health` (prints `000`, exit code 7: no connection). |
