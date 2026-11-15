@@ -58,6 +58,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
+| **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **Volume** | Storage that outlives a container, so data survives a restart. | AWS: EBS · Local: Docker named volume | 04 |

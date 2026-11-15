@@ -28,7 +28,7 @@ Terms are explained in the [glossary](../glossary.md).
 |---|---|---|---|
 | [00](./00-setup.md) | Setup: tools, Docker basics, how the course is organised | — | ✅ done |
 | [01](./01-containers.md) | Containers and the first API | EC2 / ECS, ECR | ✅ done |
-| [02](./02-load-balancing.md) | Load balancing and health checks | ALB, target groups | 🚧 in progress |
+| [02](./02-load-balancing.md) | Load balancing and health checks | ALB, target groups | ✅ done |
 | 03 | Networking: public and private networks | VPC, subnets, security groups | ⬜ planned |
 | 04 | Database, migrations, persistence | RDS | ⬜ planned |
 | 05 | Caching (cache-aside) | ElastiCache | ⬜ planned |
@@ -59,11 +59,12 @@ exact step list is in [`PLAN.md`](../../PLAN.md).
   `> 📸 TODO(you): …` in the lab, to be added by hand.
 
 ## Progress
-Updated at the end of every lab. Last update: Lab 02 in progress (step 6, health checks and failover).
+Updated at the end of every lab. Last update: Lab 02 done (step 7, tests).
 
 - [x] Course scaffolding: lab index, glossary, screenshot script
 - [x] Lab 00 — Setup: tools, repo skeleton, Makefile
 - [x] Lab 01 — Containers and the first API
+- [x] Lab 02 — Load balancing and health checks
 - [ ] Phase 1 — Docker Compose (labs 00–10)
 - [ ] Phase 2 — Kubernetes (labs 11–12)
 - [ ] Phase 3 — Terraform and a local AWS emulator (lab 13)

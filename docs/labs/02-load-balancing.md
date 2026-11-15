@@ -1,10 +1,7 @@
 # Lab 02 — Load balancing (ALB)
 
 > **AWS equivalent:** Application Load Balancer (ALB), listeners, target groups  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commits `06f598b` (step 4), `23b768a` (step 5), `9c14efe` + `41bb1c7` (step 6) on `dev`
->
-> 🚧 **Work in progress.** Steps 4–6 (load balancer, three replicas, failover) are written. Step 7 (tests) and the
-> closing sections (verify, real-AWS mapping, clean-up, quiz) are added as they are built.
+> **Builds on:** [Lab 01](./01-containers.md)  ·  **Reference solution:** commits `06f598b` (step 4), `23b768a` (step 5), `9c14efe` + `41bb1c7` (step 6), `7af15fa` (step 7) on `dev`
 
 ## 1. What you will learn
 - Explain what a load balancer does and why a web application puts one in front of its servers.
@@ -443,8 +440,270 @@ And in the load balancer's log (`docker compose logs lb`), once per run, trimmed
   (here about 1.2 s). An AWS ALB checks `/health` on a timer (active), so users normally never hit a dead target. Open-source
   Nginx has no active checks; the retry makes the cost small, not zero.
 
+### Step 7 — Tests for the lab
+**Why:** so far we checked each step by hand. A test turns "I looked and it seemed fine" into a command anyone can re-run, and
+catches the day a change silently breaks load balancing or failover. Each lab will add its own `tests/NN_*.sh`; `make test`
+runs them all.
+
+A good test **can fail**. We prove that below, by breaking the stack on purpose.
+
+**Do it:** create two scripts in `tests/`. They only use `bash`, `curl` and `docker compose`. They find the load balancer's
+address with `docker compose port lb 80`, so they follow `LB_HOST_PORT` without reading `.env`.
+
+`tests/02_load_balancing.sh`:
+```bash
+#!/usr/bin/env bash
+# Lab 02 test: the load balancer answers, spreads requests over the 3 API replicas,
+# and is the only way in. Needs the stack to be up (make up).
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; fail=1; }
+
+# Where the load balancer is published (follows LB_HOST_PORT without reading .env).
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+echo "Lab 02 - load balancing ($url)"
+
+# 1. The API answers through the load balancer.
+body=$(curl -s --max-time 5 "$url/health")
+[ "$body" = '{"status":"ok"}' ] && ok "GET /health through the load balancer" || bad "GET /health returned: $body"
+
+# 2. Three API replicas are running.
+replicas=$(docker compose ps --status running -q api | wc -l | tr -d ' ')
+[ "$replicas" = "3" ] && ok "3 api replicas running" || bad "expected 3 api replicas, found $replicas"
+
+# 3. 30 requests are spread over all 3 replicas (round-robin: about 10 each).
+hosts=$(for _ in $(seq 30); do
+  { curl -s --max-time 5 "$url/whoami"; echo; } | sed -n 's/.*"hostname":"\([^"]*\)".*/\1/p'
+done | sort | uniq -c)
+echo "$hosts" | sed 's/^/        /'
+distinct=$(echo "$hosts" | grep -c .)
+min=$(echo "$hosts" | awk 'NR==1 || $1<m {m=$1} END {print m+0}')
+if [ "$distinct" = "3" ] && [ "$min" -ge 5 ]; then
+  ok "30 requests reached 3 different replicas (fewest: $min)"
+else
+  bad "expected 3 replicas with at least 5 requests each, got $distinct replicas (fewest: $min)"
+fi
+
+# 4. The API is not published on the host: the load balancer is the only way in.
+api_port=$(docker compose port api 8000 2>/dev/null)
+if [ -z "$api_port" ] || [ "$api_port" = ":0" ]; then
+  ok "api has no published port"
+else
+  bad "api is published on $api_port"
+fi
+
+[ "$fail" = 0 ] && echo "02_load_balancing: all checks passed" || echo "02_load_balancing: FAILED"
+exit "$fail"
+```
+
+`tests/02_failover.sh`:
+```bash
+#!/usr/bin/env bash
+# Lab 02 test: kill one API replica and no request fails; restart it and it rejoins.
+# Needs the stack to be up (make up). The replica is always restarted at the end.
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; fail=1; }
+
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+# The victim: the first api container, and the hostname it answers with (its container id).
+victim=$(docker compose ps -q api | head -n 1)
+victim_host=$(docker inspect -f '{{.Config.Hostname}}' "$victim")
+trap 'docker start "$victim" >/dev/null 2>&1' EXIT
+
+echo "Lab 02 - failover ($url, killing replica $victim_host)"
+
+# Hostnames answered by the load balancer, over n requests (one per line).
+hostnames() { for _ in $(seq "$1"); do { curl -s --max-time 5 "$url/whoami"; echo; } | sed -n 's/.*"hostname":"\([^"]*\)".*/\1/p'; done; }
+
+# 0. Before: the victim is in rotation.
+hostnames 30 | grep -q "$victim_host" && ok "replica $victim_host answers before the kill" || bad "replica $victim_host never answered before the kill"
+
+# 1. Kill it, then send 60 requests: every one must be a 200.
+docker kill "$victim" >/dev/null
+codes=$(for _ in $(seq 60); do curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "$url/whoami"; done | sort | uniq -c)
+echo "$codes" | sed 's/^/        /'
+nok=$(echo "$codes" | awk '$2==200 {n=$1} END {print n+0}')
+[ "$nok" = "60" ] && ok "60 of 60 requests succeeded with one replica dead" || bad "only $nok of 60 requests succeeded with one replica dead"
+
+# 2. Restart it: within 60 seconds it must answer requests again, without touching nginx.
+docker start "$victim" >/dev/null
+rejoined=no
+for _ in $(seq 30); do
+  if hostnames 10 | grep -q "$victim_host"; then rejoined=yes; break; fi
+  sleep 2
+done
+[ "$rejoined" = yes ] && ok "replica $victim_host rejoined the rotation" || bad "replica $victim_host did not rejoin within 60 seconds"
+
+[ "$fail" = 0 ] && echo "02_failover: all checks passed" || echo "02_failover: FAILED"
+exit "$fail"
+```
+
+In the `Makefile`, replace the `test` target (it used to fail on purpose):
+```make
+test: ## Run all tests in tests/ (the lab must be up: make up)
+	@fail=0; for t in tests/*.sh; do echo "== $$t"; bash "$$t" || fail=1; done; exit $$fail
+```
+Every script runs even if an earlier one fails, and `make test` fails if any of them failed. Then, with the lab up (`make up`):
+```bash
+make test
+```
+
+**Expected result:**
+```text
+== tests/02_failover.sh
+Lab 02 - failover (http://127.0.0.1:80, killing replica b94e31d3fb8b)
+  PASS  replica b94e31d3fb8b answers before the kill
+             60 200
+  PASS  60 of 60 requests succeeded with one replica dead
+  PASS  replica b94e31d3fb8b rejoined the rotation
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+Lab 02 - load balancing (http://127.0.0.1:80)
+  PASS  GET /health through the load balancer
+  PASS  3 api replicas running
+             10 6da7385d6575
+             10 b94e31d3fb8b
+             10 fee0c8303a43
+  PASS  30 requests reached 3 different replicas (fewest: 10)
+  PASS  api has no published port
+02_load_balancing: all checks passed
+```
+The exit code of `make test` is 0. If a script fails, `make` stops with an error (`Error 1`) and a non-zero exit code. A
+run takes about 15 seconds (14 s in our first run).
+
+**What just happened:**
+- `02_load_balancing.sh` checks four things: `/health` answers through the load balancer, three replicas are running, 30
+  requests reach all three replicas (round-robin gives exactly 10 each; the test only demands at least 5 each so it does not
+  break on a harmless reordering), and `api` has no published port (`docker compose port api 8000` prints `:0`).
+- `02_failover.sh` picks one replica, checks that it answers, **kills it** (`docker kill`), sends 60 requests (all must be
+  200), restarts it and waits until its hostname shows up again. A `trap` restarts the replica even if the test is interrupted.
+- The replica's hostname is its container id: that is how the test recognises it in `/whoami` answers.
+
+**Prove the tests can fail.** Two experiments, run once while building (and put back afterwards):
+
+1. Stop one replica (`docker stop`) and run the first script:
+```text
+Lab 02 - load balancing (http://127.0.0.1:80)
+  PASS  GET /health through the load balancer
+  FAIL  expected 3 api replicas, found 2
+             15 6da7385d6575
+             15 fee0c8303a43
+  FAIL  expected 3 replicas with at least 5 requests each, got 2 replicas (fewest: 15)
+  PASS  api has no published port
+02_load_balancing: FAILED
+```
+2. Delete the `proxy_connect_timeout 1s;` line of `lb/nginx.conf` (back to the 60 s default), reload Nginx
+   (`docker compose exec lb nginx -s reload`) and run the failover script:
+```text
+Lab 02 - failover (http://127.0.0.1:80, killing replica b94e31d3fb8b)
+  PASS  replica b94e31d3fb8b answers before the kill
+              2 000
+             58 200
+  FAIL  only 58 of 60 requests succeeded with one replica dead
+  PASS  replica b94e31d3fb8b rejoined the rotation
+02_failover: FAILED
+```
+Two requests hung for more than the 5 seconds `curl` was given (`000` is curl's "no HTTP answer"), so the test failed. This is
+the same effect as the "before" experiment of step 6, now caught automatically. `git checkout lb/nginx.conf` and a reload put
+the real configuration back, and `make test` was green again.
+
+## 5. Verify it works
+With the lab up (`make up`):
+```bash
+make test
+```
+It must print `all checks passed` for both scripts and exit with code 0. To look by hand as well:
+```bash
+docker compose ps                      # api x3 and lb, all (healthy)
+curl http://localhost/whoami           # run it a few times: the hostname changes
+docker compose port api 8000           # prints :0, the API is not published
+```
+(In PowerShell, write `curl.exe`.)
+
 ## 6. Troubleshooting
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `grep: C:/Program Files/Git/etc/nginx/nginx.conf: No such file or directory` when running `docker compose exec lb grep … /etc/nginx/nginx.conf` | Git Bash on Windows rewrites arguments that look like Unix paths (`/etc/…`) into Windows paths before Docker sees them. | Switch the conversion off for that command: `MSYS_NO_PATHCONV=1 docker compose exec lb grep -c max_fails /etc/nginx/nginx.conf` (or write the path with two slashes: `//etc/nginx/nginx.conf`). Commands without a path argument, like `nginx -T`, are not affected. |
 | `Invoke-WebRequest : Missing an argument for parameter 'SessionVariable'` when running `curl -s -o /dev/null -w …` | In Windows PowerShell, `curl` is an alias of `Invoke-WebRequest`, which has different options (`-s` is read as `-SessionVariable`). The commands in this course are written for Bash. | Run them in Git Bash, or in PowerShell call the real program `curl.exe` and write `NUL` instead of `/dev/null`: `curl.exe -s -o NUL -w "%{http_code}`n" --max-time 3 http://localhost:8000/health` (prints `000`, exit code 7: no connection). |
+| `FAIL expected 3 replicas with at least 5 requests each, got 1 replicas` and one very long hostname in the output of `02_load_balancing.sh`, while the stack is healthy | A bug in our first version of the test, not in the stack: `/whoami` answers with no trailing newline, so the 30 hostnames were glued together on one line and counted as one. | Add a newline after each answer: `{ curl -s "$url/whoami"; echo; } \| sed …` (already done in the scripts above). |
+
+## 7. Going to real AWS
+- **What changes:** an Application Load Balancer with a listener on port 80 (and 443 with a certificate from ACM), a **target
+  group** of type `instance` or `ip` with a health check on `/health`, and the API replicas registered in it (an ECS service
+  does the registration for you). Security groups: one for the ALB (inbound 80/443 from the internet), one for the API
+  (inbound 8000 **only from the ALB's security group**). The ALB spans at least two subnets in two availability zones.
+- **Health checks:** an ALB checks every target on a timer (defaults: every 30 s, 5 s timeout, 5 successes to be healthy,
+  2 failures to be unhealthy) and stops routing to unhealthy ones **before** a user hits them. Our Nginx only reacts to a failed
+  real request (passive).
+- **What this lab does not simulate:** multiple availability zones, the ALB's own scaling and high availability (Nginx is a
+  single container: if it dies, everything is down), TLS termination, sticky sessions, weighted target groups, access logs to S3,
+  AWS WAF, and cross-zone behaviour.
+- **Rough cost:** an ALB bills per hour plus per "load balancer capacity unit"; an idle one is roughly 16 to 20 USD per
+  month, more with traffic (check the [ELB pricing page](https://aws.amazon.com/elasticloadbalancing/pricing/); prices vary by
+  region and change). It is not covered by the free tier for long, so delete it after experimenting.
+
+## 8. Clean up
+```bash
+make down        # stops and removes the containers and the network; nothing else was created
+```
+`make down` keeps data volumes (there are none yet). The images stay on disk; `docker image ls` lists them.
+
+## 9. Check your understanding
+1. In AWS terms, what are the listener, the target group and a target in this lab?
+2. Why does `proxy_pass http://api` alone stop working correctly after a replica is restarted, and what do `resolver` and
+   `resolve` change?
+3. A replica dies. Without `proxy_connect_timeout 1s`, what does one unlucky visitor experience, and why?
+4. What is the difference between an active and a passive health check? Which one is Nginx doing here, and which one does an
+   ALB do?
+5. Why does `tests/02_load_balancing.sh` accept "at least 5 requests per replica" instead of "exactly 10"?
+
+<details><summary>Answers</summary>
+
+1. The listener is the `server { listen 80; }` block, the target group is the `upstream api` block (every container behind
+   the DNS name `api`), and a target is one API replica.
+2. Plain `proxy_pass` resolves the name once, when Nginx starts, and keeps that IP address. A restarted container may get a new
+   address, so Nginx would keep sending traffic to a stale one. `resolver` tells Nginx which DNS server to ask (Docker's
+   `127.0.0.11`) and `resolve` makes it ask again regularly (every 5 s with `valid=5s`), so the server list follows the containers.
+3. The request is sent to the dead address, which never answers, and waits for the default connect timeout of 60 seconds
+   before Nginx tries another replica. With the 1 s timeout the wait is about a second (we measured about 1.2 s).
+4. An active check calls a health URL on a timer and removes a failing target before users are affected (ALB). A passive check
+   only notices when a real request fails (open-source Nginx, with `max_fails` and `fail_timeout`).
+5. The test checks the behaviour that matters (all replicas get traffic) without depending on exact counters; a harmless change
+   in how requests are counted should not turn the test red.
+
+</details>
+
+## 10. Exercises (optional)
+- Change `replicas: 3` to `4` in `docker-compose.yml` and run `make up`. Run `make test`: which check fails, and why? Fix the
+  test so that it reads the expected number of replicas from `docker compose config` instead of the fixed number 3.
+- Add a third check to `02_failover.sh`: kill **two** replicas at once. Does every request still succeed? What does
+  `proxy_next_upstream_tries 3` have to do with the answer?
+- Set `max_fails=3` instead of 1, repeat the kill experiment of step 6, and compare how many requests are slow.
+
+## 11. Further reading
+- [How Application Load Balancers work](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html) (AWS)
+- [Health checks for ALB target groups](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html) (AWS)
+- [`ngx_http_upstream_module`](https://nginx.org/en/docs/http/ngx_http_upstream_module.html): `server`, `zone`, `resolve`,
+  `max_fails`, `fail_timeout` (Nginx)
+- [`ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html): `proxy_connect_timeout`,
+  `proxy_next_upstream` (Nginx)
+- [Networking in Docker: DNS services](https://docs.docker.com/engine/network/#dns-services) (Docker)
