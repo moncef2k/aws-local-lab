@@ -146,7 +146,7 @@ Nothing will be installed system-wide without asking you first.
 - [ ] **36. Test runner polish.** `AWSLAB-54` `make test` prints a summary table and exits non-zero on any failure; add `tests/README` of what each test proves. *Check:* break something on purpose → red; revert → green.
 - [ ] **37. k6 load test.** `AWSLAB-55` `tests/load/k6.js` (50 VUs, 1 min, thresholds on p95 and error rate) run via pinned `grafana/k6` image, `make load-test`. *Check:* summary printed with p95 and error rate.
 - [ ] **38. k6 → Grafana.** `AWSLAB-56` Send k6 metrics to Prometheus (remote write) and add a panel. *Check:* panel shows the run (screenshot).
-- [ ] **39. Root `README.md`.** `AWSLAB-57` 🔀 Mermaid architecture diagram, local-vs-AWS mapping table, "what this can't simulate". **End of Phase 1** — full `make down && make up && make test` run.
+- [ ] **39. Root `README.md`.** `AWSLAB-57` 🔀 **Update the existing root `README.md`** (created outside the plan, ticket `AWSLAB-78`) — do not write a new one: bring its status line, architecture diagram (mark what is now built), local-vs-AWS table, lab table and roadmap up to date, and add "what this can't simulate" if missing. **End of Phase 1** — full `make down && make up && make test` run.
 
 ---
 
