@@ -263,7 +263,8 @@ per request).
 
 **What just happened:**
 - `make up` ran `docker compose up -d --build --remove-orphans`: Compose built the image from `./api`,
-  created a private network `aws-local-lab_default` and started the container
+  created a network `aws-local-lab_default` (an automatic one, shared by every service that does not name a network; [Lab 03](./03-networking.md)
+  replaces it with explicit `public` and `private` networks) and started the container
   `aws-local-lab-api-1` (`<project>-<service>-<number>`; the number matters in Lab 02 with replicas).
 - `ports: "127.0.0.1:8000:8000"` = *host address : host port : container port*. Without the `127.0.0.1:` prefix
   Docker would publish the port on every network interface of your machine, i.e. to your whole Wi-Fi.

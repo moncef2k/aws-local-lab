@@ -1,9 +1,7 @@
 # Lab 03 — Networking (VPC, subnets, security groups)
 
 > **AWS equivalent:** Virtual Private Cloud (VPC), public and private subnets, security groups  ·  **Time:** ~45 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 02](./02-load-balancing.md)  ·  **Reference solution:** commit `ce59529` (step 8) on `dev`
-
-> **Status:** in progress. Step 8 is written; step 9 (the isolation test) and the closing sections (5–11) come next.
+> **Builds on:** [Lab 02](./02-load-balancing.md)  ·  **Reference solution:** commits `ce59529` (step 8) and `4a3d36a` (step 9) on `dev`
 
 ## 1. What you will learn
 - Explain what a **network**, a **subnet** and a **VPC** are, and why an architecture is split into a *public* and a
@@ -251,11 +249,262 @@ make test
 ```
 (Trimmed to the key lines.)
 
-> Step 9 adds a dedicated isolation test (`tests/03_network_isolation.sh`) and the closing sections of this lab.
+### Step 9 — An isolation test
+**Why:** checks by hand prove it works once; a script proves it keeps working. Someone adding a `ports:` line to the API, or
+dropping `internal: true`, silently opens the architecture, and nothing would notice. The test turns the rules of this lab into
+checks that go red when they are broken.
 
-## 5–11. To be completed in step 9
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are
-written when the lab ends (step 9), as the course rules require.
+**Do it.** Create `tests/03_network_isolation.sh` (same style as the Lab 02 tests: `PASS` / `FAIL` lines and an exit code). `make test`
+runs every `tests/*.sh`, so nothing else has to change.
+
+```bash
+#!/usr/bin/env bash
+# Lab 03 test: the network layout behaves like a VPC. Only the load balancer is exposed,
+# the API lives on an internal (private) network and cannot reach the internet.
+# Needs the stack to be up (make up).
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()   { echo "  PASS  $1"; }
+bad()  { echo "  FAIL  $1"; fail=1; }
+skip() { echo "  SKIP  $1"; }
+
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+echo "Lab 03 - network isolation ($url)"
+
+# 1. Only the load balancer publishes a port on the host, and it is port 80 inside.
+published=$(docker compose ps --format '{{.Service}} {{.Ports}}' | grep -- '->' || true)
+if [ "$(echo "$published" | grep -c .)" = "1" ] && echo "$published" | grep -Eq '^lb .*->80/tcp'; then
+  ok "only lb publishes a port ($(echo "$published" | cut -d' ' -f2-))"
+else
+  bad "expected only lb to publish a port, got: $published"
+fi
+
+# 2. The private network is internal; the API is on it and nowhere else; the lb is on both.
+nets_of() { docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$1"; }
+private=$(docker compose ps -q lb | head -1 | xargs docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | tr ' ' '\n' | grep '_private$')
+internal=$(docker network inspect -f '{{.Internal}}' "$private" 2>/dev/null)
+[ "$internal" = "true" ] && ok "network $private is internal" || bad "network ${private:-private} is not internal (Internal=$internal)"
+
+api_ids=$(docker compose ps -q api)
+wrong=0
+for id in $api_ids; do
+  [ "$(nets_of "$id" | xargs)" = "$private" ] || wrong=1
+done
+[ -n "$api_ids" ] && [ "$wrong" = 0 ] && ok "every api replica is on $private only" || bad "an api replica is on another network than $private"
+
+lb_nets=$(nets_of "$(docker compose ps -q lb | head -1)" | wc -w | tr -d ' ')
+[ "$lb_nets" = "2" ] && ok "lb is attached to 2 networks (public + private)" || bad "lb is attached to $lb_nets network(s), expected 2"
+
+# 3. The API cannot be reached from the host, neither on a published port nor on its container address.
+if curl -s -o /dev/null --max-time 2 http://127.0.0.1:8000/health; then
+  bad "the API answers on 127.0.0.1:8000"
+else
+  ok "127.0.0.1:8000 does not answer"
+fi
+api_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$private\").IPAddress}}" "$(echo "$api_ids" | head -1)")
+if curl -s -o /dev/null --max-time 2 "http://$api_ip:8000/health"; then
+  bad "the API answers from the host on its container address $api_ip"
+else
+  ok "the API container address ($api_ip) is not reachable from the host"
+fi
+
+# 4. ...but it is reachable through the load balancer (the lb is the bridge between the networks).
+body=$(curl -s --max-time 5 "$url/health")
+[ "$body" = '{"status":"ok"}' ] && ok "the API answers through the load balancer" || bad "GET /health through the lb returned: $body"
+
+# 5. The API has no way to the internet. The lb is the control: if it cannot get out either
+#    (no internet on this machine), the result would prove nothing, so the check is skipped.
+if ! docker compose exec -T lb wget -q -O /dev/null -T 5 http://example.com 2>/dev/null; then
+  skip "no internet from the lb either: cannot prove the API is cut off"
+elif docker compose exec -T --index 1 api python -c \
+  "import urllib.request; urllib.request.urlopen('http://example.com', timeout=5)" >/dev/null 2>&1; then
+  bad "the API container can reach the internet"
+else
+  ok "the API container cannot reach the internet (the lb can)"
+fi
+
+[ "$fail" = 0 ] && echo "03_network_isolation: all checks passed" || echo "03_network_isolation: FAILED"
+exit "$fail"
+```
+
+| Check | What it proves | Key lines |
+|---|---|---|
+| 1 | The only door is the load balancer's port 80. `docker compose ps --format` prints each service with its ports; a published port contains `->`, an exposed-only one (`8000/tcp`) does not. | `grep -- '->'`, then "exactly one line, and it is `lb`" |
+| 2 | The layout is the one we designed: `private` is `internal`, the API replicas are on it and nowhere else, the load balancer is on two networks. | `docker inspect` / `docker network inspect` with `-f` templates |
+| 3 | The host cannot reach the API: not on `127.0.0.1:8000`, not on the container's own address on `private`. `curl` returning an error (exit code not 0) is the pass. | `curl -s -o /dev/null --max-time 2` |
+| 4 | The API is still reachable **through** the load balancer: the isolation did not break the application. | `curl $url/health` |
+| 5 | The API cannot reach the internet. The load balancer is the *control*: if it cannot reach the internet either (your laptop is offline), the test says `SKIP` instead of passing for the wrong reason. | `wget` from `lb`, then the Python call from `api` |
+
+Shell details worth knowing: `set -u` makes unset variables an error; `|| true` after `grep` stops a "no match" from ending the script;
+`${addr/0.0.0.0/127.0.0.1}` is a Bash text replacement (Docker may report `0.0.0.0`); `xargs` hands the output of one command to the next one as arguments.
+
+**Run it:**
+```bash
+bash tests/03_network_isolation.sh
+```
+```text
+Lab 03 - network isolation (http://127.0.0.1:80)
+  PASS  only lb publishes a port (127.0.0.1:80->80/tcp)
+  PASS  network aws-local-lab_private is internal
+  PASS  every api replica is on aws-local-lab_private only
+  PASS  lb is attached to 2 networks (public + private)
+  PASS  127.0.0.1:8000 does not answer
+  PASS  the API container address (172.23.0.3) is not reachable from the host
+  PASS  the API answers through the load balancer
+  PASS  the API container cannot reach the internet (the lb can)
+03_network_isolation: all checks passed
+```
+
+**Prove that the test can fail.** A test that cannot fail proves nothing. Break the isolation on purpose, without touching your real
+file, using a throw-away override file (Compose merges several `-f` files; the last one wins). Save it **outside** the repository:
+
+```yaml
+# break-isolation.yml  (throw-away, do not commit)
+services:
+  api:
+    ports:
+      - "127.0.0.1::8000"      # publish the API on a random host port
+networks:
+  private:
+    internal: false            # give the "private" network a way out
+```
+```bash
+docker compose -f docker-compose.yml -f /path/to/break-isolation.yml up -d
+bash tests/03_network_isolation.sh
+```
+```text
+  FAIL  expected only lb to publish a port, got: api 127.0.0.1:59713->8000/tcp
+api 127.0.0.1:59714->8000/tcp
+api 127.0.0.1:59715->8000/tcp
+lb 127.0.0.1:80->80/tcp
+  FAIL  network aws-local-lab_private is not internal (Internal=false)
+  PASS  every api replica is on aws-local-lab_private only
+  PASS  lb is attached to 2 networks (public + private)
+  PASS  127.0.0.1:8000 does not answer
+  PASS  the API container address (172.23.0.2) is not reachable from the host
+  PASS  the API answers through the load balancer
+  FAIL  the API container can reach the internet
+03_network_isolation: FAILED
+```
+Three checks go red, for the three things we broke. Then put the real configuration back and check it is green again:
+```bash
+docker compose up -d --remove-orphans
+bash tests/03_network_isolation.sh | tail -1
+```
+```text
+03_network_isolation: all checks passed
+```
+
+**What just happened:**
+- The test fails exactly where the layout was broken and passes where it was not, so it checks what it claims to check.
+- **A limit of the "not reachable from the host" checks:** with the isolation broken, `127.0.0.1:8000` still printed `PASS` (the API was published
+  on a *random* port, not on 8000), and the container-address check also passes on this machine. On Docker Desktop the container networks live inside
+  a WSL2 virtual machine, so their addresses are not routable from Windows anyway. On a Linux host, that check becomes meaningful. This is why checks 1 and 2
+  (what is published, what is internal) are the real guards here, and 3 only a second line of defence.
+- `make test` now runs three scripts. The full run is green:
+
+```bash
+make test
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+```
+(Trimmed to the summary lines.)
+
+## 5. Verify it works
+With the lab up (`make up`):
+```bash
+make test
+```
+It must print `all checks passed` for the three scripts and exit with code 0. To look by hand as well:
+```bash
+docker network ls --filter name=aws-local-lab        # default (unused), private, public
+docker network inspect aws-local-lab_private --format '{{.Internal}}'    # true
+docker compose ps                                    # only lb shows 127.0.0.1:80->80/tcp
+curl -s localhost/whoami                             # works through the load balancer
+```
+(In PowerShell, write `curl.exe`.)
+
+## 6. Troubleshooting
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Bind for 127.0.0.1:8000 failed: port is already allocated` when you add `ports: ["127.0.0.1:8000:8000"]` to `api` | The `api` service has 3 replicas and they all ask for the same host port; a host port can only be used once. This is also why the API has no published port: the load balancer is the way in. | Do not publish the API. If you really need to test one replica from the host, publish a random port (`"127.0.0.1::8000"`, find it with `docker compose ps`) or use `docker compose exec`. |
+| `Error response from daemon: container … is not connected to the network aws-local-lab_private` when you run `docker compose up -d` right after a failed `up` | Compose was interrupted halfway while re-creating containers and networks, and its view of what is attached to what is stale. | Run `docker compose up -d --remove-orphans` again; it completed on the next attempt for us. |
+| `FAIL the lb service is not running: start the lab with 'make up' first` | The stack is down or half-started (for example after a failed `up`). | `make up`, wait until `docker compose ps` shows `(healthy)`, run the test again. |
+| `SKIP no internet from the lb either` in `03_network_isolation.sh` | The laptop is offline, so the control (the load balancer) cannot reach the internet and the API check would prove nothing. | Reconnect and run the test again. |
+| The API "can reach the internet" after you edit `docker-compose.yml` | `internal: true` was removed from `private`, or `api` was attached to `public`. | The test names it (`FAIL network … is not internal` or `FAIL the API container can reach the internet`); restore the file and `docker compose up -d`. |
+
+## 7. Going to real AWS
+- **What changes:** a **VPC** (for example `10.0.0.0/16`) with at least **two public subnets** (one per Availability Zone), an **Internet Gateway**
+  and a route `0.0.0.0/0 → Internet Gateway` for them; the ALB lives there. **Two or more private subnets** (one per AZ) hold the app servers, with
+  **no** route to the Internet Gateway. If they must fetch updates or call an external API, add a **NAT Gateway** in a public subnet and route
+  `0.0.0.0/0 → NAT Gateway` from the private subnets (outbound only), or use **VPC endpoints** for AWS services.
+- **Security groups instead of "network membership":** one for the ALB (inbound 80/443 from the internet), one for the API
+  (inbound 8000 **only from the ALB's security group**, so even another machine in the VPC cannot call it). Security groups are *stateful*:
+  the answer to an allowed request is allowed automatically. **Network ACLs** are an extra, stateless firewall per subnet.
+- **What this lab does not simulate:** per-resource, per-port rules (here, every container on `private` can talk to every other one), route
+  tables, Internet and NAT gateways as objects, several AZs, VPC Flow Logs, network ACLs, and IPv6.
+- **Rough cost:** a VPC, subnets, route tables, security groups and an Internet Gateway are free. A **NAT Gateway** is the classic surprise: it
+  bills per hour plus per GB processed (very roughly 30 USD a month per gateway before any traffic, and you want one per AZ in production). Public IPv4
+  addresses also bill per hour. Check the [VPC pricing page](https://aws.amazon.com/vpc/pricing/), as prices vary by region and change.
+
+## 8. Clean up
+```bash
+make down        # stops and removes the containers and the networks; nothing else was created
+docker network ls --filter name=aws-local-lab    # empty
+```
+`make down` removes the `public` and `private` networks and the unused `default` one. Images stay on disk. If you ran the "break the isolation"
+experiment, delete your throw-away `break-isolation.yml`.
+
+## 9. Check your understanding
+1. In AWS terms, what are the `public` and `private` networks of this lab, and what makes `private` private?
+2. Why is the load balancer attached to **both** networks, and what would happen if it were only on `public`?
+3. The API container prints `NOT reachable … Temporary failure in name resolution` when it tries to download a page. Is that the same failure as in a real
+   private subnet without a NAT Gateway? What is the common conclusion?
+4. Why does `03_network_isolation.sh` run the same download from the load balancer before it judges the API?
+5. Which security-group rule would you write in AWS to say "only the load balancer may call the API on port 8000", and what do we use here instead?
+
+<details><summary>Answers</summary>
+
+1. `public` is a public subnet (it has a route to the internet), `private` is a private subnet. `internal: true` removes the gateway out of the
+   network, so containers on it can talk to each other and to nothing else.
+2. It receives visitors on `public` (where port 80 is published) and forwards to the API on `private`. Only on `public`, it could not reach the API (different
+   network), and the application would answer `502` or "host not found".
+3. Not exactly: Docker does not forward DNS outside an internal network, so the name lookup fails; in a real private subnet the lookup works but the connection
+   times out. In both cases nothing leaves the private network.
+4. As a control. If the laptop is offline, the API check would "pass" for the wrong reason. If the load balancer reaches the internet and the API does not, the
+   difference is the network layout, which is what we want to prove.
+5. An inbound rule on the API's security group: protocol TCP, port 8000, **source = the ALB's security group**. Here the same idea is expressed by network membership:
+   only containers on `private` can reach the API, and only the load balancer is on both networks.
+
+</details>
+
+## 10. Exercises (optional)
+- Add a fourth service on `public` only (for example `nginx:1.30.6-alpine` named `probe`) and try to reach the API from it (`docker compose exec probe wget -qO- http://api:8000/health`).
+  What happens, and which real AWS object does this experiment resemble?
+- Attach `api` to `public` as well and run the test. Which checks go red? Restore the file.
+- Run `docker network inspect aws-local-lab_public` and `aws-local-lab_private`, and write down the two subnets. Then decide which ranges you would give a VPC with two public and two private
+  subnets (see the course module [Networking 06](../courses/networking/06-subnets-and-cidr.md)).
+
+## 11. Further reading
+- [How Amazon VPC works](https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html) (AWS)
+- [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) (AWS)
+- [NAT gateways](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html) (AWS)
+- [Networking in Docker: bridge networks and the `internal` option](https://docs.docker.com/engine/network/drivers/bridge/) (Docker)
+- [Compose file reference: `networks`](https://docs.docker.com/reference/compose-file/networks/) (Docker)
 
 ## Go deeper
 - Course: [Networking 06 - Subnets and CIDR](../courses/networking/06-subnets-and-cidr.md)
