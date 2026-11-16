@@ -96,7 +96,7 @@ Nothing will be installed system-wide without asking you first.
 - [x] **8. Public / private networks.** `AWSLAB-26` `public` network (LB only, publishes 80) and `private`
   (`internal: true`, apps only); LB attached to both. *Check:* `docker network inspect`, app still reachable via LB,
   containers on `private` cannot reach the internet (like a private subnet without NAT).
-- [ ] **9. Isolation test.** `AWSLAB-27` 🔀 `tests/03_network_isolation.sh`: API containers not reachable from the host;
+- [x] **9. Isolation test.** `AWSLAB-27` 🔀 `tests/03_network_isolation.sh`: API containers not reachable from the host;
   only port 80 published. *Check:* `make test` green.
 
 ### Lab 04 — Database (RDS) · epic `AWSLAB-8`
