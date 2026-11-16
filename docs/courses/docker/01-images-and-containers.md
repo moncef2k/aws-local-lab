@@ -23,6 +23,7 @@
 | **Tag** | A label on an image version, like `1.30.6-alpine`. Details in [Docker 05](./README.md#modules). |
 | **Registry** | A server that stores images and hands them out, like an app store for images. |
 | **Docker Hub** | The most common public registry. `docker run nginx:...` downloads from it when the image is not on your disk yet. |
+| **Go template** | A tiny pattern language Docker uses in `--format` / `-f` options to pick fields out of its output, for example `{{.State.ExitCode}}` = "the exit code". |
 
 ## The idea
 **Analogy.** An image is a *recipe card* with every ingredient already measured and sealed in a box. It is read-only:
