@@ -28,6 +28,11 @@
 | **Network ACL** | AWS's second firewall, attached to a whole subnet: stateless, allow *and* deny rules. |
 | **`iptables`** | The firewall built into the Linux kernel. Docker and many tools use it. We use it here to show real rules. |
 | **Capability `NET_ADMIN`** | A permission that lets a container change its own network settings, including firewall rules. Containers do not have it by default. |
+| **Kernel** | The core of an operating system, the part that handles network packets and starts programs. On Linux the firewall (`iptables`) lives inside it. |
+| **Chain and policy** | An `iptables` *chain* is a list of rules for one kind of traffic (`INPUT` = packets arriving at this machine). The chain's *policy* is what happens to a packet that matches no rule. |
+| **Loopback (`lo`)** | A virtual network interface through which a machine talks to itself (address `127.0.0.1`). |
+| **Connection tracking (`conntrack`)** | The kernel's memory of which connections currently exist. It is what lets a firewall be stateful. |
+| **`apk`** | The package installer of Alpine Linux (the small Linux system inside the Nginx image). `apk add iptables` installs the `iptables` program. |
 
 ## The idea
 **Analogy.** Think of a bouncer with a guest list at the door of a club. The standing order is *nobody gets in*; only names on the list
@@ -82,7 +87,7 @@ iptables -P INPUT DROP                                                 # 4
 |---|---|---|
 | `-A INPUT` | **A**ppend a rule to the `INPUT` chain, the list checked for packets arriving at *this* machine. Rules are checked top to bottom, first match wins. | `-I INPUT` would *insert* at the top instead; order changes the result. |
 | 1: `-i lo -j ACCEPT` | Accept everything on the loopback interface `lo` (the machine talking to itself). | Without it, programs on the machine can no longer talk to each other over the loopback interface (we did not test what else breaks). |
-| 2: `-m conntrack --ctstate ESTABLISHED,RELATED` | Accept packets that belong to a connection the machine already knows. This is what makes the firewall **stateful**. | Remove it and replies to connections the machine started are dropped (exercise 5). |
+| 2: `-m conntrack --ctstate ESTABLISHED,RELATED` | Accept packets that belong to a connection the machine already knows. This is what makes the firewall **stateful**. | Remove it and replies to connections the machine started are dropped (hands-on step 5). |
 | 3: `-p tcp --dport 80 -s $A` | Accept new TCP connections to **d**estination port 80 coming from **s**ource `$A` only. This is the "guest list". | Change `-s $A` to a range (`-s 172.25.0.0/24`) to admit every container of that subnet. |
 | 4: `-P INPUT DROP` | Set the **P**olicy of the chain: what happens to packets no rule accepted. `DROP` = silently discard. | `ACCEPT` (the default) turns the whole thing into a deny-list: only explicit drops would block. |
 
@@ -219,7 +224,7 @@ course-fw-other
 (`docker stop` prints the container names; omitted above. The two lines shown are from `docker network rm`.)
 
 ## What if…?
-**…you forget the `ESTABLISHED,RELATED` rule?** Exercise 5 *is* that experiment: everything the machine starts (updates, calls to a database, DNS lookups) silently stops working while incoming
+**…you forget the `ESTABLISHED,RELATED` rule?** Hands-on step 5 *is* that experiment: everything the machine starts (updates, calls to a database, DNS lookups) silently stops working while incoming
 requests still work, which is a confusing failure. **…you set the policy to `ACCEPT` and only add drops?** You get a deny-list: anything you forgot to list is open. Allow-lists fail safe; deny-lists fail open.
 (An `iptables` rule with `-j REJECT` instead of `DROP` would answer "refused" right away; we did not test it here.)
 
@@ -251,7 +256,7 @@ requests still work, which is a confusing failure. **…you set the policy to `A
 - [`iptables` manual page](https://man7.org/linux/man-pages/man8/iptables.8.html)
 
 ## Where you use this in the project
-- [Lab 03, step 8](../../labs/03-networking.md#step-8--public-and-private-networks): the `public` / `private` split is the coarse layer (exercise 6); [section 2.3](../../labs/03-networking.md#23-how-we-reproduce-it-locally) maps it to security groups.
+- [Lab 03, step 8](../../labs/03-networking.md#step-8--public-and-private-networks): the `public` / `private` split is the coarse layer (hands-on step 6); [section 2.3](../../labs/03-networking.md#23-how-we-reproduce-it-locally) maps it to security groups.
 - [Lab 03, step 9](../../labs/03-networking.md#step-9--an-isolation-test): the isolation test checks that only the load balancer is exposed.
 - [Lab 03, "Going to real AWS"](../../labs/03-networking.md#7-going-to-real-aws): the security-group chain ALB → API.
 - Later: [Lab 04](../../labs/README.md), where "only the API may reach Postgres" becomes a rule you can test.
