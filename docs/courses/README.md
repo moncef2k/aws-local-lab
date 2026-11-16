@@ -22,7 +22,7 @@ Modules marked ⬜ are planned, ✅ are written.
 | Course | Modules | Written |
 |---|---|---|
 | [Docker](./docker/README.md) | 10 | 1 |
-| Networking | 8 | 0 |
+| [Networking](./networking/README.md) | 8 | 1 |
 | Nginx | 8 | 0 |
 | FastAPI | 7 (+1 on request) | 0 |
 | Databases | 9 | 0 |
@@ -40,7 +40,7 @@ Modules whose topic first appears in each lab. Read them before, during or after
 | [00 - Setup](../labs/00-setup.md) | Docker 02, AWS 01 |
 | [01 - Containers](../labs/01-containers.md) | [Docker 01](./docker/01-images-and-containers.md), Docker 03, Docker 04, Docker 05, Docker 06, Docker 07, Docker 09, Docker 10, Networking 01, Networking 03, Networking 05, FastAPI 01, FastAPI 02, FastAPI 05, FastAPI 06, AWS 03, AWS 13 |
 | [02 - Load balancing](../labs/02-load-balancing.md) | Networking 02, Networking 04, Nginx 01, Nginx 02, Nginx 03, Nginx 04, Nginx 05, Nginx 08, AWS 05, AWS 14 |
-| [03 - Networking](../labs/03-networking.md) | Networking 06, Networking 07, AWS 04 |
+| [03 - Networking](../labs/03-networking.md) | [Networking 06](./networking/06-subnets-and-cidr.md), Networking 07, AWS 04 |
 | [04 - Database](../labs/README.md) | Docker 08, FastAPI 03, FastAPI 04, FastAPI 07, FastAPI 08 *(on request)*, Databases 01, Databases 02, Databases 03, Databases 04, Databases 05, Databases 06, Databases 07, Databases 08, Databases 09, AWS 06 |
 | [05 - Caching](../labs/README.md) | Caching 01, Caching 02, Caching 03, Caching 04, Caching 05, Caching 06, AWS 07 |
 | [06 - Object storage](../labs/README.md) | AWS 02, AWS 08 |

@@ -248,3 +248,6 @@ make test
 ## 5–11. To be completed in step 9
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are
 written when the lab ends (step 9), as the course rules require.
+
+## Go deeper
+- Course: [Networking 06 - Subnets and CIDR](../courses/networking/06-subnets-and-cidr.md)
