@@ -16,8 +16,8 @@ Back to the [course index](../README.md).
 | 04 | Proxies: forward vs reverse | ⬜ planned | Lab 02, step 4 |
 | 05 | NAT and port forwarding | ⬜ planned | Lab 01, step 3 |
 | 06 | [Subnets and CIDR](./06-subnets-and-cidr.md) | ✅ written | Lab 03, step 8 |
-| 07 | Firewalls and security groups | ⬜ planned | Lab 03, step 8 |
+| 07 | [Firewalls and security groups](./07-firewalls-and-security-groups.md) | ✅ written | Lab 03, step 8 |
 | 08 | HTTPS and TLS | ⬜ planned | Lab 08, step 28 |
 
-The order of the numbers is the suggested reading order (module 06 was written early because Lab 03 needs it). The order in
+The order of the numbers is the suggested reading order (modules 06 and 07 were written early because Lab 03 needs them). The order in
 which modules are written follows [`COURSES-PLAN.md`](../../COURSES-PLAN.md).
