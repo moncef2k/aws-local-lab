@@ -23,6 +23,7 @@
 | **Context** | A saved answer to "which Docker engine am I talking to?". |
 | **Bind mount** | Showing a folder of the host to a container, so both see the same files. |
 | **Published port** | A container port that is made reachable on the host machine (`-p 127.0.0.1:18080:80`). |
+| **Go template** | A tiny pattern language Docker uses in `--format` / `-f` options to pick fields out of its output, for example `{{.Server.Os}}` = "the operating system of the engine". |
 
 ## The idea
 **Analogy.** Containers are Linux tenants, and Windows has no Linux apartment. Docker Desktop builds a small, sealed **Linux apartment inside your Windows house** (the WSL 2 virtual machine) and runs
@@ -183,7 +184,7 @@ processors=8
 ```
 After editing, run `wsl.exe --shutdown` and start Docker Desktop again. Individual containers can also be capped (`docker run --memory 512m`, or `deploy.resources` in Compose).
 
-**…the check "the API container address is not reachable from the host" passes even when the isolation is broken?** Exercise 7 is the reason: on Docker Desktop **no** container address is reachable from Windows, protected or not.
+**…the check "the API container address is not reachable from the host" passes even when the isolation is broken?** Hands-on step 7 is the reason: on Docker Desktop **no** container address is reachable from Windows, protected or not.
 That is why [Lab 03, step 9](../../labs/03-networking.md#step-9--an-isolation-test) treats that check as a second line of defence and relies on "what is published" and "which networks are internal".
 
 ## In short
