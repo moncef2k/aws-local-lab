@@ -24,6 +24,8 @@
 | **Private range** | Address blocks reserved for internal networks, never used on the public internet: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`. |
 | **Overlap** | Two ranges that share at least one address. Overlapping networks cannot be used together reliably. |
 | **Route table** | The rules a machine or router uses to decide where to send a packet, based on its destination. |
+| **VPC** | "Virtual Private Cloud": your own isolated network inside AWS, defined by one big address range. Subnets are cut out of it. |
+| **Availability Zone** | One physical data-centre location of an AWS region. A subnet lives in exactly one, so spreading subnets over several zones survives the loss of one. |
 
 ## The idea
 **Analogy.** A postal address has a city, a street and a house number. The first parts are the same for every house on that street, only
