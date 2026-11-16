@@ -509,3 +509,4 @@ experiment, delete your throw-away `break-isolation.yml`.
 ## Go deeper
 - Course: [Networking 06 - Subnets and CIDR](../courses/networking/06-subnets-and-cidr.md)
 - Course: [Networking 07 - Firewalls and security groups](../courses/networking/07-firewalls-and-security-groups.md)
+- Course: [AWS 04 - VPC: subnets, route tables, gateways](../courses/aws/04-vpc.md)

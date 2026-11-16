@@ -88,7 +88,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 |---|---|---|---|---|---|---|
 | 01 | Images, containers and their lifecycle | `01-images-and-containers.md` | step 2 (Lab 01) | step 8 | AWSLAB-81 | `docker build`, `docker run`, stop/rm (2); `docker kill` and restart (6) |
 | 02 | Docker Desktop on Windows (WSL2) | `02-docker-desktop-wsl2.md` | step 0 (Lab 00) | step 9 | AWSLAB-83 | Environment check; what actually runs on this laptop (cAdvisor tweaks again in step 31) |
-| 03 | Dockerfile instructions | `03-dockerfile.md` | step 2 (Lab 01) | step 10 | - | `api/Dockerfile` (FROM, COPY, RUN, USER, CMD) |
+| 03 | Dockerfile instructions | `03-dockerfile.md` | step 2 (Lab 01) | step 10 | AWSLAB-85 | `api/Dockerfile` (FROM, COPY, RUN, USER, CMD) |
 | 04 | Layers and the build cache | `04-layers-and-build-cache.md` | step 2 (Lab 01) | step 11 | - | Dependencies copied before code to reuse the cache |
 | 05 | Tags, digests and registries | `05-tags-and-registries.md` | step 2 (Lab 01) | step 12 | - | Pinned `python:3.12-slim-...`, the no-`:latest` rule |
 | 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | - | Compose `environment:` and `.env` / `.env.example` |
@@ -195,7 +195,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 01 | Regions and Availability Zones | `01-regions-and-azs.md` | step 1 (Lab 00) | step 32 | - | Lab 00 theory: what AWS is, what a laptop cannot simulate |
 | 02 | IAM: users, roles, policies, access keys | `02-iam.md` | step 18 (Lab 06) | step 32 | - | Fake access keys for MinIO; presigned URLs (19-20) |
 | 03 | Compute: EC2, ECS, Fargate and EKS | `03-compute.md` | step 2 (Lab 01) | step 33 | - | Lab 01: container vs VM, 'Going to real AWS'; EKS from step 40 |
-| 04 | VPC: subnets, route tables, gateways | `04-vpc.md` | step 8 (Lab 03) | step 10 | - | Public/private Docker networks |
+| 04 | VPC: subnets, route tables, gateways | `04-vpc.md` | step 8 (Lab 03) | step 10 | AWSLAB-84 | Public/private Docker networks |
 | 05 | ELB: ALB, target groups, health checks | `05-elb.md` | step 4 (Lab 02) | step 34 | - | Nginx stands in for the ALB |
 | 06 | RDS: managed databases | `06-rds.md` | step 10 (Lab 04) | step 12 | - | Postgres container stands in for RDS |
 | 07 | ElastiCache | `07-elasticache.md` | step 15 (Lab 05) | step 25 | - | Redis container stands in for ElastiCache |
