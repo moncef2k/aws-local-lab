@@ -86,7 +86,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
-| 01 | Images, containers and their lifecycle | `01-images-and-containers.md` | step 2 (Lab 01) | step 8 | - | `docker build`, `docker run`, stop/rm (2); `docker kill` and restart (6) |
+| 01 | Images, containers and their lifecycle | `01-images-and-containers.md` | step 2 (Lab 01) | step 8 | AWSLAB-81 | `docker build`, `docker run`, stop/rm (2); `docker kill` and restart (6) |
 | 02 | Docker Desktop on Windows (WSL2) | `02-docker-desktop-wsl2.md` | step 0 (Lab 00) | step 9 | - | Environment check; what actually runs on this laptop (cAdvisor tweaks again in step 31) |
 | 03 | Dockerfile instructions | `03-dockerfile.md` | step 2 (Lab 01) | step 10 | - | `api/Dockerfile` (FROM, COPY, RUN, USER, CMD) |
 | 04 | Layers and the build cache | `04-layers-and-build-cache.md` | step 2 (Lab 01) | step 11 | - | Dependencies copied before code to reuse the cache |
@@ -106,7 +106,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 03 | HTTP requests, responses and status codes | `03-http.md` | step 2 (Lab 01) | step 19 | - | `curl` on `/health` and `/whoami`; 502/503 during failover |
 | 04 | Proxies: forward vs reverse | `04-proxies.md` | step 4 (Lab 02) | step 20 | - | Nginx as a reverse proxy in front of the API |
 | 05 | NAT and port forwarding | `05-nat-and-port-forwarding.md` | step 3 (Lab 01) | step 21 | - | `127.0.0.1:<port>:8000` mapping; private network without NAT (8) |
-| 06 | Subnets and CIDR | `06-subnets-and-cidr.md` | step 8 (Lab 03) | step 8 | - | Network subnets in `docker network inspect` |
+| 06 | Subnets and CIDR | `06-subnets-and-cidr.md` | step 8 (Lab 03) | step 8 | AWSLAB-80 | Network subnets in `docker network inspect` |
 | 07 | Firewalls and security groups | `07-firewalls-and-security-groups.md` | step 8 (Lab 03) | step 9 | - | Public/private split and the isolation test (9) |
 | 08 | HTTPS and TLS | `08-https-and-tls.md` | step 28 (Lab 08) | step 39 | - | mkcert certificate, port 443, redirect |
 

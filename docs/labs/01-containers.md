@@ -348,3 +348,6 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 - [Amazon ECS task definitions](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html)
   and [Amazon ECR](https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html)
 - [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn settings](https://www.uvicorn.org/settings/)
+
+## Go deeper
+- Course: [Docker 01 - Images, containers and their lifecycle](../courses/docker/01-images-and-containers.md)
