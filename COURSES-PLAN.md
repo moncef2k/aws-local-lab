@@ -336,11 +336,15 @@ back and the plan updated.
 
 1. [x] Plan approved and committed (`AWSLAB-79 docs: courses plan`).
 2. [x] Jira epic `AWSLAB-79` created.
-3. [ ] You review the proposed diffs for `CLAUDE.md`, `.claude/skills/next-step/SKILL.md` and `.claude/agents/step-reviewer.md`;
-   I apply them after your yes.
-4. [ ] First module (Docker 01, Images and containers) + Networking 06 (Subnets and CIDR) are written at the stop of step 8,
-   when you type `next`.
+3. [x] Workflow changes applied (`AWSLAB-79 docs: tool courses workflow`, commit `8d2e3da`).
+4. [x] First two modules written at the stop of step 8 (see the progress log).
+5. [ ] Next modules: see "Schedule by lab step" (step 9: Networking 07 and Docker 02).
 
 ## Progress log
-_(filled in as modules are written: module, ticket, commit hash, reviewer verdict)_
+_(one line per module: module, ticket, commit hash, reviewer verdict)_
+
+| Stop | Module | Ticket | Commit | Reviewer |
+|---|---|---|---|---|
+| step 8 | Docker 01 - Images, containers and their lifecycle | AWSLAB-81 | `a7e05cb` (+ fix `fd0f70d`) | PASS WITH NOTES, notes fixed |
+| step 8 | Networking 06 - Subnets and CIDR | AWSLAB-80 | `66ff45a` (+ fix `0abb548`) | PASS WITH NOTES, notes fixed |
 
