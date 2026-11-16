@@ -460,3 +460,6 @@ To remove the small test image pulled in step 1: `docker rmi hello-world:linux`.
 - [GNU Make manual](https://www.gnu.org/software/make/manual/make.html)
 - [What is AWS?](https://aws.amazon.com/what-is-aws/) and
   [Amazon VPC: how it works](https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html)
+
+## Go deeper
+- Course: [Docker 02 - Docker Desktop on Windows (WSL2)](../courses/docker/02-docker-desktop-wsl2.md)

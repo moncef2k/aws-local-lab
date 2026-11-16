@@ -10,7 +10,7 @@ Back to the [course index](../README.md).
 | # | Module | Status | First used in the labs |
 |---|---|---|---|
 | 01 | [Images, containers and their lifecycle](./01-images-and-containers.md) | ✅ written | Lab 01, step 2 |
-| 02 | Docker Desktop on Windows (WSL2) | ⬜ planned | Lab 00 |
+| 02 | [Docker Desktop on Windows (WSL2)](./02-docker-desktop-wsl2.md) | ✅ written | Lab 00 |
 | 03 | Dockerfile instructions | ⬜ planned | Lab 01, step 2 |
 | 04 | Layers and the build cache | ⬜ planned | Lab 01, step 2 |
 | 05 | Tags, digests and registries | ⬜ planned | Lab 01, step 2 |
