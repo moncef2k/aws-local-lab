@@ -90,10 +90,18 @@ flowchart LR
 subnet). The load balancer is the one component that needs both: a door to the outside and a door to the API.
 
 **First, look at where we start.** Until now Compose put everything on its automatic `default` network, so the API can
-reach the internet. This one-liner (Python's standard library, because the slim image has no `curl`) tries to download a page:
+reach the internet. This small probe (Python's standard library, because the slim image has no `curl`) tries to download a
+page and prints a one-line verdict whether it works or not. Put it in a shell variable, we reuse it below:
 
 ```bash
-docker compose exec -T --index 1 api python -c "import urllib.request; r = urllib.request.urlopen('http://example.com', timeout=5); print('internet: reachable, HTTP', r.status)"
+PROBE="
+import urllib.request
+try:
+    r = urllib.request.urlopen('http://example.com', timeout=5)
+    print('internet: reachable, HTTP', r.status)
+except Exception as e:
+    print('internet: NOT reachable ->', type(e).__name__, e)"
+docker compose exec -T --index 1 api python -c "$PROBE"
 ```
 ```text
 internet: reachable, HTTP 200
@@ -206,14 +214,14 @@ All three replicas answer, so Nginx still finds them through Docker DNS, now ove
 
 **Check 4 — the private container has no way out, the load balancer does:**
 ```bash
-docker compose exec -T --index 1 api python -c "import urllib.request; r = urllib.request.urlopen('http://example.com', timeout=5); print('internet: reachable, HTTP', r.status)"
+docker compose exec -T --index 1 api python -c "$PROBE"      # the same probe as before
 docker compose exec -T lb wget -q -O /dev/null -T 5 http://example.com && echo "internet: reachable"
 ```
 ```text
 internet: NOT reachable -> URLError <urlopen error [Errno -3] Temporary failure in name resolution>
 internet: reachable
 ```
-The same one-liner that printed `HTTP 200` before now fails: the API is on `private` only. The load balancer, which is also
+The same probe that printed `HTTP 200` before now reports a failure (its `try/except` turns the error into one line): the API is on `private` only. The load balancer, which is also
 on `public`, still reaches the internet (`wget -q -O /dev/null -T 5` downloads quietly, throws the page away and gives up after 5 seconds).
 
 **What just happened:**
