@@ -21,6 +21,8 @@
 | **Signal** | A small message the system sends to a process. `SIGTERM` means "please finish and quit", `SIGKILL` means "you are stopped now, no discussion". |
 | **Exit code** | A number a process leaves when it ends. `0` means success, anything else means something went wrong or it was stopped. |
 | **Tag** | A label on an image version, like `1.30.6-alpine`. Details in [Docker 05](./README.md#modules). |
+| **Registry** | A server that stores images and hands them out, like an app store for images. |
+| **Docker Hub** | The most common public registry. `docker run nginx:...` downloads from it when the image is not on your disk yet. |
 
 ## The idea
 **Analogy.** An image is a *recipe card* with every ingredient already measured and sealed in a box. It is read-only:
@@ -198,6 +200,8 @@ docker ps -a --filter name=course-demo
 course-demo-a
 NAMES     IMAGE     STATUS
 ```
+(`docker stop` and `docker rm` each print the container name, so you will see the name twice; the `stop` line is left out above, as
+explained in the output note. The empty table at the end proves nothing is left.)
 
 ## In short
 1. An **image** is a read-only recipe; a **container** is a dish made from it, with its own private writable layer.
