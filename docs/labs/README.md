@@ -30,7 +30,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [01](./01-containers.md) | Containers and the first API | EC2 / ECS, ECR | ✅ done |
 | [02](./02-load-balancing.md) | Load balancing and health checks | ALB, target groups | ✅ done |
 | [03](./03-networking.md) | Networking: public and private networks | VPC, subnets, security groups | ✅ done |
-| 04 | Database, migrations, persistence | RDS | ⬜ planned |
+| [04](./04-database.md) | Database, migrations, persistence | RDS | 🚧 in progress |
 | 05 | Caching (cache-aside) | ElastiCache | ⬜ planned |
 | 06 | Object storage and presigned URLs | S3 | ⬜ planned |
 | 07 | Queues and workers | SQS, Lambda / ECS workers | ⬜ planned |
