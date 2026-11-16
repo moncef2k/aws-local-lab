@@ -43,9 +43,36 @@ services:
       retries: 3
       start_period: 5s
 
+  # The database (RDS in AWS). Private network only, and no "ports:" at all: nothing on the
+  # host can reach it, only containers on "private" (the API will, from step 11 on).
+  postgres:
+    image: postgres:18.7-alpine3.24
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lab}
+      POSTGRES_DB: ${POSTGRES_DB:-lab}
+      # No default on purpose: a missing password stops "docker compose" with a clear message.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+    volumes:
+      # Postgres 18 images keep the data in /var/lib/postgresql/18/docker and declare
+      # /var/lib/postgresql as their volume: the named volume goes there.
+      - pgdata:/var/lib/postgresql
+    networks:
+      - private
+    healthcheck:
+      # $$ stops Compose from replacing the variables: the shell inside the container does it.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
 networks:
   # Like the public subnets of a VPC: has a route to the internet. Only the load balancer joins it.
   public:
   # Like the private subnets: "internal" means no route out and no published ports.
   private:
     internal: true
+
+volumes:
+  # Survives "docker compose down" (like an RDS storage volume survives a reboot).
+  pgdata:

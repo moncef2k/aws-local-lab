@@ -100,7 +100,7 @@ Nothing will be installed system-wide without asking you first.
   only port 80 published. *Check:* `make test` green.
 
 ### Lab 04 — Database (RDS) · epic `AWSLAB-8`
-- [ ] **10. Postgres container.** `AWSLAB-28` `postgres:<pinned>` on `private`, named volume, password from `.env`,
+- [x] **10. Postgres container.** `AWSLAB-28` `postgres:<pinned>` on `private`, named volume, password from `.env`,
   healthcheck, no host port. *Check:* `pg_isready` via `docker compose exec`.
 - [ ] **11. DB layer + migrations.** `AWSLAB-29` SQLAlchemy + Alembic, first migration (`notes` table), one-shot `migrate`
   service the API waits for. *Check:* table exists (`\dt`), `alembic_version` set.
