@@ -26,6 +26,7 @@
 | **Route table** | The rules a machine or router uses to decide where to send a packet, based on its destination. |
 | **VPC** | "Virtual Private Cloud": your own isolated network inside AWS, defined by one big address range. Subnets are cut out of it. |
 | **Availability Zone** | One physical data-centre location of an AWS region. A subnet lives in exactly one, so spreading subnets over several zones survives the loss of one. |
+| **Go template** | A tiny pattern language Docker uses in `--format` options to pick fields out of its output, for example `{{.Containers}}` = "the containers of this network". |
 
 ## The idea
 **Analogy.** A postal address has a city, a street and a house number. The first parts are the same for every house on that street, only
@@ -196,7 +197,7 @@ docker: Error response from daemon: failed to set up container networking: no av
 address left. The same thing happens in a real subnet that is too small, which is why you size subnets with room to grow.
 
 ## What if…?
-**…you create a second network whose range overlaps the first?** (The demo network from exercise 3 still exists at this point.)
+**…you create a second network whose range overlaps the first?** (The demo network from hands-on step 3 still exists at this point.)
 ```bash
 docker network create --subnet 10.200.0.0/24 course-cidr-overlap
 ```
