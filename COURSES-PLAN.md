@@ -338,13 +338,16 @@ back and the plan updated.
 2. [x] Jira epic `AWSLAB-79` created.
 3. [x] Workflow changes applied (`AWSLAB-79 docs: tool courses workflow`, commit `8d2e3da`).
 4. [x] First two modules written at the stop of step 8 (see the progress log).
-5. [ ] Next modules: see "Schedule by lab step" (step 9: Networking 07 and Docker 02).
+5. [x] Step 9 modules written (Networking 07 and Docker 02).
+6. [ ] Next modules: see "Schedule by lab step" (step 10: AWS 04 and Docker 03).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
 
 | Stop | Module | Ticket | Commit | Reviewer |
 |---|---|---|---|---|
-| step 8 | Docker 01 - Images, containers and their lifecycle | AWSLAB-81 | `a7e05cb` (+ fix `fd0f70d`) | PASS WITH NOTES, notes fixed |
-| step 8 | Networking 06 - Subnets and CIDR | AWSLAB-80 | `66ff45a` (+ fix `0abb548`) | PASS WITH NOTES, notes fixed |
+| step 8 | Docker 01 - Images, containers and their lifecycle | AWSLAB-81 | `a7e05cb` (+ fixes `fd0f70d`, `c5c8f2e`) | PASS WITH NOTES, notes fixed |
+| step 8 | Networking 06 - Subnets and CIDR | AWSLAB-80 | `66ff45a` (+ fixes `0abb548`, `8cb0f1a`) | PASS WITH NOTES, notes fixed |
+| step 9 | Networking 07 - Firewalls and security groups | AWSLAB-82 | `45a8506` (+ fix `1a47189`) | PASS WITH NOTES, notes fixed |
+| step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
 
