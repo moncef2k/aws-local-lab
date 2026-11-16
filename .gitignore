@@ -25,3 +25,6 @@ Thumbs.db
 # Claude Code local files
 .claude/settings.local.json
 .claude/.last-size-check
+
+# Scratch output from manual checks
+result.txt

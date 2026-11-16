@@ -67,6 +67,36 @@ learning the theory. Follow `docs/labs/_TEMPLATE.md` for every lab.
   `docs/labs/README.md` (index + progress) and `docs/glossary.md`.
 - If a step changes something an earlier lab already explains, update that lab too.
 
+## Tool courses (second learning track)
+`docs/courses/` holds deep-dive courses for a complete beginner, one per tool (nginx, docker, networking, databases,
+caching, workers, fastapi, kubernetes, aws, terraform). Labs show HOW to build; courses explain each tool in depth.
+`COURSES-PLAN.md` is the source of truth for the modules and the schedule (Jira epic `AWSLAB-79`).
+
+- **Part of every step's stop.** After the step's docs commit, write the modules `COURSES-PLAN.md` schedules for this step:
+  at most 2 (slot 1 = current/next lab, slot 2 = labs 00-02 backlog, most basic first). Carry over what does not fit.
+  "next" still means the next lab step. If I say "no course modules today", skip them for that session.
+- **On request only.** `course <tool> <module>` (for example `course fastapi testing`) writes an on-request module at
+  the next stop, on top of the 2-module limit.
+- **Writing standard** (skeleton in `docs/courses/_TEMPLATE.md`, 150-300 lines per module): written for a complete
+  beginner; every term defined in plain words before use, also inside tables; an everyday analogy first, then the precise
+  explanation; Mermaid diagrams (sequence diagram for "who talks to whom", flowcharts for structure); every config or code
+  sample explained line by line (comment per line + table: line, what it does, what happens if changed or removed); every
+  command explained (what it does, each flag, how to read the output); a hands-on exercise with expected output; a
+  "What if...?" experiment; an "In short" 3-line recap; a 5-question quiz with answers in `<details>`; official-docs
+  links; "Where you use this in the project" with links to lab sections.
+- **Real outputs only.** Run each exercise (throw-away `docker run --rm` with pinned images, never `:latest`) and paste what
+  you captured. Never invent output, never capture secrets. Kubernetes modules wait until k3d is installed and Terraform
+  modules until Terraform is installed; AWS exercises never touch a real account.
+- **Jira.** A module's ticket is created only when the module is scheduled: a Tâche under epic `AWSLAB-79`, titled
+  `Course <tool> NN – <title>`, labels `courses` and `course-<tool>`, created In Progress. Move it to Done once the
+  commit passed the reviewer. Record the key in the Ticket column of `COURSES-PLAN.md`.
+- **Commit** `AWSLAB-NNN docs: course <tool> module NN - <title>` (the module's own ticket). The same commit updates
+  `docs/courses/README.md`, the ticket column and progress log in `COURSES-PLAN.md`, and adds the module's link to a short
+  `## Go deeper` list at the end of the lab where its topic first appears (if that lab file does not exist yet, add it
+  when the lab is written). Make no other change to existing labs.
+- **Review and report.** `step-reviewer` also checks the course commit (real outputs, beginner writing standard). The
+  report gets one line per module: `New course module: <title> (<file>)`.
+
 ## Jira (kanban board, project key `AWSLAB`)
 Jira shows the **status** of the work; `PLAN.md` stays the **source of truth for content** (what each step is).
 If the two disagree about what a step is, `PLAN.md` wins and the ticket is updated to match.
@@ -102,9 +132,9 @@ Issue types: **Epic** for labs, **Tâche** (Task) for steps, linked with `parent
   keys; tell me so the board can be brought up to date afterwards.
 
 ## Project tooling (in `.claude/`)
-- **Skills:** `/next-step` runs one step of the loop above; `/explain-aws` explains the AWS
+- **Skills:** `/next-step` runs one step of the loop above (plus its due course modules); `/explain-aws` explains the AWS
   equivalent of the latest step; `/status` shows a health table of the lab.
-- **Subagent:** `step-reviewer` (read-only) reviews each step commit.
+- **Subagent:** `step-reviewer` (read-only) reviews each step commit and its course commit(s).
 - **Hooks:** `guard-bash.sh` blocks destructive git/docker/rm commands, reading `.env`, and any
   AWS/Terraform command not aimed at the local emulator; `protect-secrets.sh` blocks reading or
   editing secret files; `check-step-size.sh` warns when a commit is too big; `notify.ps1` shows a
