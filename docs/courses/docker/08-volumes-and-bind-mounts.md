@@ -170,6 +170,7 @@ With `:ro` the container can read but not write. Use it for configuration files 
 ## What if…?
 **…you mount over a folder that already contains files?** A bind mount **hides** what the image had there; a volume starts **populated** with it. Real result, mounting at `/etc/apk`:
 ```bash
+mkdir empty                                                                       # an empty folder on the host
 docker run --rm alpine:3.24 sh -c 'ls /etc/apk'                                   # the image alone
 docker run --rm -v "$(pwd -W)/empty:/etc/apk" alpine:3.24 sh -c 'ls -A /etc/apk | wc -l'   # empty folder bind-mounted
 docker run --rm -v /etc/apk alpine:3.24 sh -c 'ls /etc/apk'                       # anonymous volume

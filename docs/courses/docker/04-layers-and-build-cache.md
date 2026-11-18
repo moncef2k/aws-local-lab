@@ -189,8 +189,16 @@ RUN /bin/sh -c set -eux;   savedAptMark="$(a…   41.4MB
   [4] RUN pip install --no-cache-dir -r requirements.txt   ran (2.0s)
   [5] COPY app.py .                                        ran (0.0s)
 ```
-Layer 3 changed, so 4 **and** 5 are rebuilt, although `app.py` did not change: *a change invalidates its layer and everything after it*. Running the same build again, with nothing
-changed, shows `CACHED` on steps 2 to 5.
+Layer 3 changed, so 4 **and** 5 are rebuilt, although `app.py` did not change: *a change invalidates its layer and everything after it*. (This build is `b good 12`.) Running the same build
+again, with nothing changed, gives:
+```text
+  [1] FROM docker.io/library/python:3.12.16-slim-trixie@sh ran (0.0s)
+  [2] WORKDIR /app                                         CACHED
+  [3] COPY requirements.txt .                              CACHED
+  [4] RUN pip install --no-cache-dir -r requirements.txt   CACHED
+  [5] COPY app.py .                                        CACHED
+```
+Every step is reused: with nothing changed, the build does no work.
 
 **A trap:** `RUN pip install somelibrary` (no version) is cached by its **text**. A new release of the library changes nothing for Docker, so you keep the old layer until the cache
 is cleared. That is one more reason to pin versions, as this project does.
