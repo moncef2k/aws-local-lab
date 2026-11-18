@@ -1,9 +1,9 @@
 # Lab 04 — Database (RDS)
 
 > **AWS equivalent:** Amazon RDS for PostgreSQL, DB subnet groups, security groups, snapshots  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10), `cc957ec` (step 11), `d7ac631` (step 12) and `bde01cf` (step 13) on `dev`
+> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10), `cc957ec` (step 11), `d7ac631` (step 12), `bde01cf` (step 13) and `2f14ada` (step 14) on `dev`
 
-> **Status:** in progress. Steps 10–13 are written; step 14 (tests) and the closing sections (5–11) come next.
+> **Status:** complete (steps 10–14).
 
 ## 1. What you will learn
 - Explain why an application keeps its data in a **database** and not in its own files or memory.
@@ -12,6 +12,7 @@
 - Prove that the database is not reachable from your machine, and that its data outlives its container.
 - Describe a **migration** (a versioned change to the database structure), write one with **Alembic**, and run it as a one-shot job before the API starts.
 - Give yourself **admin access** to a private database safely: a side door that is off by default (a Compose **profile**), local-only and still password-protected.
+- Write **tests** that prove the two promises that matter most: the data survives a full restart, and the database stays unreachable from outside.
 - Build a **CRUD** API (create, read, update, delete) that stores its data in the database, with validated input and one database session per request.
 - Explain what an **ORM** (SQLAlchemy) does: you describe tables as Python classes and the library writes the SQL.
 
@@ -263,8 +264,8 @@ make test
 02_load_balancing: all checks passed
 03_network_isolation: all checks passed
 ```
-(Trimmed to the summary lines. `02_failover.sh` is occasionally red by itself, one request out of 60 failing: a known intermittent problem of the Lab 02 test, see its
-troubleshooting entry once the fix lands. Re-run it.)
+(Trimmed to the summary lines. `02_failover.sh` is occasionally red by itself, one request out of 60 failing: a known intermittent problem of the Lab 02 test, see the
+[Lab 02 troubleshooting entry](./02-load-balancing.md#6-troubleshooting). Re-run it.)
 
 **What just happened:**
 - You added the architecture's "RDS instance": a database on the private network that nothing but the API will be able to reach.
@@ -960,15 +961,262 @@ closed again
   accepts connections from the bastion's security group. Never "make the database publicly accessible".
 - Remember to stop the proxy when you finish: an open port is an attack surface, even on `127.0.0.1`.
 
-## 6. Troubleshooting (so far)
+### Step 14 — Tests for the lab: the data survives, the database stays private
+**Why:** everything in this lab so far was checked by hand. Two promises matter most and are easy to break by accident later: *the data outlives the containers* and *the database is not reachable from outside*. A test turns
+each promise into a command that answers `PASS` or `FAIL`, so `make test` catches the day a change breaks one of them.
+
+**Do it.** Two changes, both in `tests/`.
+
+1. A new script, `tests/04_persistence.sh`: write a note, throw **all** containers away, start again, and check the note is still there.
+```bash
+#!/usr/bin/env bash
+# Lab 04 test: data lives in the database volume, not in the containers. Writes one note,
+# runs "docker compose down" then "up" (volumes are kept), and checks the note is still there.
+# Needs the stack to be up (make up). Takes about a minute. The test note is deleted at the end.
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; fail=1; }
+
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+echo "Lab 04 - persistence ($url)"
+
+# 1. Write a note through the load balancer.
+title="persistence-test-$(date +%s)"
+resp=$(curl -s --max-time 5 -X POST "$url/notes" -H 'Content-Type: application/json' \
+  -d "{\"title\":\"$title\",\"body\":\"written before down\"}")
+id=$(echo "$resp" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+if [ -z "$id" ]; then
+  echo "  FAIL  could not create a note: $resp"
+  exit 1
+fi
+trap 'curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id"' EXIT
+ok "created note $id (\"$title\")"
+
+# 2. Throw every container away (down) and start again (up). No "-v": the volume stays.
+docker compose down >/dev/null 2>&1 && ok "docker compose down: containers removed" || bad "docker compose down failed"
+if docker volume ls -q | grep -q '_pgdata$'; then ok "the pgdata volume is still there"; else bad "the pgdata volume is gone"; fi
+docker compose up -d >/dev/null 2>&1 && ok "docker compose up -d: new containers started" || bad "docker compose up failed"
+
+# 3. Wait for the API to serve the note again (the new database container must be healthy
+#    and the migrate job must have run), then compare.
+code=000
+for _ in $(seq 60); do
+  code=$(curl -s -o /dev/null --max-time 3 -w '%{http_code}' "$url/notes/$id")
+  [ "$code" = "200" ] && break
+  sleep 2
+done
+body=$(curl -s --max-time 5 "$url/notes/$id")
+if [ "$code" = "200" ] && echo "$body" | grep -q "\"title\":\"$title\""; then
+  ok "note $id survived down + up, same title"
+else
+  bad "note $id is gone after down + up (HTTP $code): $body"
+fi
+
+[ "$fail" = 0 ] && echo "04_persistence: all checks passed" || echo "04_persistence: FAILED"
+exit "$fail"
+```
+
+2. A new section in the existing `tests/03_network_isolation.sh`, just before its last line (`[ "$fail" = 0 ] && echo "03_network_isolation: ...`). It reuses the helpers `ok`, `bad`, `skip`, `nets_of` and the variable `$private` that the script already defines:
+```bash
+# 6. The database (Lab 04): no published port, on the private network only, not reachable from
+#    the host, but reachable from an API replica (the control that proves "not reachable" means something).
+pg_id=$(docker compose ps -q postgres | head -1)
+if [ -z "$pg_id" ]; then
+  skip "the postgres service is not running"
+else
+  [ "$(docker compose port postgres 5432 2>/dev/null)" = ":0" ] && ok "postgres publishes no port" || bad "postgres publishes a port"
+  [ "$(nets_of "$pg_id" | xargs)" = "$private" ] && ok "postgres is on $private only" || bad "postgres is on another network than $private"
+  if [ -n "$(docker compose --profile admin ps --status running -q db-proxy 2>/dev/null)" ]; then
+    skip "the admin profile is on (db-proxy running): 127.0.0.1:5432 is open on purpose"
+  elif timeout 3 bash -c '</dev/tcp/127.0.0.1/5432' 2>/dev/null; then
+    bad "127.0.0.1:5432 accepts connections"
+  else
+    ok "127.0.0.1:5432 is closed"
+  fi
+  pg_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$private\").IPAddress}}" "$pg_id")
+  if timeout 3 bash -c "</dev/tcp/$pg_ip/5432" 2>/dev/null; then
+    bad "postgres answers from the host on its container address $pg_ip"
+  else
+    ok "the postgres container address ($pg_ip) is not reachable from the host"
+  fi
+  if docker compose exec -T --index 1 api python -c \
+    "import socket; socket.create_connection(('postgres', 5432), timeout=3)" >/dev/null 2>&1; then
+    ok "an API replica reaches postgres:5432 on the private network"
+  else
+    bad "an API replica cannot reach postgres:5432"
+  fi
+fi
+```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `title="persistence-test-$(date +%s)"` | A unique title (seconds since 1970), so the test never mistakes an old note for its own. | A fixed title could match a leftover note and hide a failure. |
+| `id=$(echo "$resp" \| sed -n 's/.*"id":\([0-9]*\).*/\1/p')` | Extracts the new note's `id` from the JSON answer. | Without the id the test cannot read the note back. |
+| `trap '... -X DELETE ...' EXIT` | Runs when the script ends, **even on failure**: deletes the test note. | Without it a failed run leaves a note behind. |
+| `docker compose down` (no `-v`) | Removes the containers and networks but **keeps the volumes**. | `down -v` would delete `pgdata`, and the test would (rightly) fail; it is also blocked in this project. |
+| `docker volume ls -q \| grep -q '_pgdata$'` | The named volume still exists (Compose names it `aws-local-lab_pgdata`). | Removing it hides *why* a failure happened. |
+| `for _ in $(seq 60); do ... sleep 2; done` | Waits up to two minutes for the **new** containers: healthy database, the `migrate` job, then the API. | A fixed `sleep` is either too short (flaky) or too long (slow). |
+| `grep -q "\"title\":\"$title\""` | The note read back has the same title. | Checking only the status code would pass on any note. |
+| `docker compose port postgres 5432` = `:0` | `:0` is Docker's answer for "no published port". | If it printed `127.0.0.1:5432`, someone added `ports:` to `postgres`. |
+| `nets_of "$pg_id"` = `$private` | `postgres` is attached to the private network and nowhere else. | A second network would put the database next to the load balancer. |
+| `docker compose --profile admin ps --status running -q db-proxy` | Detects the admin door of [step 13](#step-13--the-admin-profile-a-door-to-the-database-closed-by-default); if it is on, the "closed" check is skipped with a message. | Without it, switching the admin profile on would turn this check red for a good reason. |
+| `bash -c '</dev/tcp/127.0.0.1/5432'` | Bash's built-in "open a TCP connection": succeeds only if something listens. `timeout 3` stops it hanging. | Remove `timeout` and a filtered port could block the test. |
+| `docker compose exec -T --index 1 api python -c "...create_connection(('postgres', 5432)...)"` | The **control**: from inside an API replica the same port *is* reachable. | Without a positive control, "not reachable" could just mean "nothing runs". |
+
+**Check — the isolation test, now with the database checks:**
+```bash
+bash tests/03_network_isolation.sh        # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+Lab 03 - network isolation (http://127.0.0.1:8081)
+  PASS  only lb publishes a port (127.0.0.1:8081->80/tcp)
+  PASS  network aws-local-lab_private is internal
+  PASS  every api replica is on aws-local-lab_private only
+  PASS  lb is attached to 2 networks (public + private)
+  PASS  127.0.0.1:8000 does not answer
+  PASS  the API container address (172.23.0.4) is not reachable from the host
+  PASS  the API answers through the load balancer
+  PASS  the API container cannot reach the internet (the lb can)
+  PASS  postgres publishes no port
+  PASS  postgres is on aws-local-lab_private only
+  PASS  127.0.0.1:5432 is closed
+  PASS  the postgres container address (172.23.0.2) is not reachable from the host
+  PASS  an API replica reaches postgres:5432 on the private network
+03_network_isolation: all checks passed
+```
+The last five lines are new. **Can it fail?** Switch the admin door on and run it again (`docker compose --profile admin up -d db-proxy`, then the test, then `docker compose --profile admin stop db-proxy`); output filtered to the interesting lines:
+```text
+  FAIL  expected only lb to publish a port, got: db-proxy 127.0.0.1:5432->5432/tcp
+  PASS  postgres publishes no port
+  PASS  postgres is on aws-local-lab_private only
+  SKIP  the admin profile is on (db-proxy running): 127.0.0.1:5432 is open on purpose
+  PASS  the postgres container address (172.23.0.2) is not reachable from the host
+  PASS  an API replica reaches postgres:5432 on the private network
+03_network_isolation: FAILED
+```
+The test describes the lab in its **default** state: with the admin door open the original "only the load balancer publishes a port" check turns red (correctly: `db-proxy` publishes one), while the new port-5432 check says it is skipping on purpose. Stop the proxy and it is green again.
+
+**Check — the persistence test:**
+```bash
+bash tests/04_persistence.sh              # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+Lab 04 - persistence (http://127.0.0.1:8081)
+  PASS  created note 3 ("persistence-test-1795043723")
+  PASS  docker compose down: containers removed
+  PASS  the pgdata volume is still there
+  PASS  docker compose up -d: new containers started
+  PASS  note 3 survived down + up, same title
+04_persistence: all checks passed
+```
+The whole run took about 19 seconds (`real 0m19.480s`). Note the `id` is 3: the counter continued after the notes of the earlier steps (ids are never reused). The test deletes its note at the end; `curl localhost:8081/notes` afterwards printed `[]`.
+
+**Regression check — the whole suite:**
+```bash
+make test                                 # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+```
+(Trimmed to the summary lines; `make` exited with code 0.) `make test` now proves four things about the architecture: the load balancer spreads traffic, a dead replica costs no request, the network layout isolates the API **and the database**, and the data survives a full restart.
+
+**What just happened:**
+- The lab gained a **safety net**: the two most important database promises are now executable. They run in `make test` next to the earlier ones.
+- The persistence test uses the **real thing**: it goes through the load balancer, the API and Postgres, restarts everything, and reads the note back. It does not test the volume in isolation, it tests the *behaviour* you care about.
+- The isolation test has a **control** (an API replica *can* reach the database), so "not reachable from the host" is a meaningful result and not an accident.
+- What the test cannot do here: prove the opposite (that data is lost without the volume). That needs `docker compose down -v`, which this project blocks on purpose; see the exercises.
+
+## 5. Verify it works
+With the lab up (`make up`; if port 80 is busy on your machine use `LB_HOST_PORT=8081 make up` and add the same prefix to the commands below):
+```bash
+make test
+```
+All four scripts must print `all checks passed`, and `make` must exit with code 0. To look by hand as well:
+```bash
+docker compose ps -a --format 'table {{.Service}}\t{{.Status}}'                                                    # api x3, lb, postgres healthy; migrate Exited (0)
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'                      # notes and alembic_version
+curl -s -X POST localhost/notes -H 'Content-Type: application/json' -d '{"title":"hello"}'; curl -s localhost/notes   # create and list
+docker compose port postgres 5432                                                                                  # prints :0, not published
+```
+(In PowerShell, write `curl.exe`, and put the JSON in a file or escape the quotes.)
+
+## 6. Troubleshooting
 | Symptom | Cause | Fix |
 |---|---|---|
 | `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified` | Docker Desktop is not running, so the Docker engine is not there. | Start Docker Desktop, wait until `docker info` prints a version, then retry. |
 | `Bind for 0.0.0.0:80 failed: port is already allocated` when `lb` starts | Another container (here `docker-nginx-1`, from a different Compose project) already publishes port 80 on your machine. Find it with `docker ps --format '{{.Names}}\t{{.Ports}}'`. | Stop the other project, or choose another port for the lab: `LB_HOST_PORT=8081` in `.env` (or on the command line for one run) and use `localhost:8081`. |
 | `psql: error: ... FATAL:  password authentication failed for user "root"` when connecting from a client container with `--env-file .env` | `.env` does not define `POSTGRES_USER` (Compose silently uses the default `lab`), so inside the client container the variable is empty and `psql` falls back to the container's user, `root`. | Pass the user explicitly, with the same default Compose uses: `-U "${POSTGRES_USER:-lab}" -d "${POSTGRES_DB:-lab}"`. |
+| `tests/03_network_isolation.sh` reports `FAIL  expected only lb to publish a port, got: db-proxy ...` | The admin door is open: `db-proxy` (profile `admin`) publishes `127.0.0.1:5432` on purpose, and the test describes the default state. | Stop it (`docker compose --profile admin stop db-proxy`) and run the test again. |
 
-## 5, 7–11. To be completed in step 14
-Verify, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 14). Troubleshooting above grows with each step.
+## 7. Going to real AWS
+- **What changes:** an **RDS for PostgreSQL** instance (or Aurora PostgreSQL) in **private subnets** chosen through a **DB subnet group** spanning at least two availability zones. Its **security group** allows port 5432 **only from the API's security group**
+  (not from the internet, not from your laptop). The application connects to the instance **endpoint** (a DNS name), with the credentials delivered by **Secrets Manager** or the task's IAM role, not by a file. The schema is created by the same kind of
+  migration job, run as an ECS task or a pipeline step before each deployment.
+- **Admin access:** never "publicly accessible". You go through a **bastion host** or **Systems Manager Session Manager** port forwarding, or a VPN: the local `db-proxy` with `--profile admin` is that idea in miniature.
+- **Safety nets that RDS adds:** **Multi-AZ** (a synchronous standby in another zone and automatic failover, same endpoint), **automated backups** with point-in-time restore and manual **snapshots** (a restore always creates a **new** instance), **minor-version patching**
+  in a maintenance window, **storage autoscaling**, **encryption at rest** (KMS) and **in transit** (TLS), and **CloudWatch** metrics. **Read replicas** are for read scaling, not for safety.
+- **What this lab does not simulate:** failover and Multi-AZ, backups and snapshots (a `pg_dump` is the closest local tool, see [Databases 09](../courses/databases/README.md) once written), patching windows, instance sizing (the container may use all your RAM and CPU), storage limits,
+  encryption, IAM authentication, parameter groups and the multi-zone network. The `postgres` container is a single process with a single disk: if the volume is deleted, the data is gone.
+- **Rough cost:** an RDS instance bills per hour for its **instance class**, plus storage per GB-month, plus backup storage beyond the free allowance, plus data transfer; Multi-AZ roughly doubles the instance part. A small single-zone instance is typically in the range of
+  tens of USD per month (check the [RDS pricing page](https://aws.amazon.com/rds/postgresql/pricing/); prices vary by region and change, and a free tier may apply to new accounts for a limited time). Stop or delete test instances, and delete manual snapshots you no longer need
+  (they are billed until deleted).
+
+## 8. Clean up
+```bash
+make down          # removes the containers and networks; the data volume pgdata is KEPT
+make up            # starts again: the notes are still there
+make clean         # deletes the volume too (ALL lab data); it asks you to type "yes" first - run it yourself
+```
+`make down` is `docker compose down`: it keeps named volumes, which is exactly what `tests/04_persistence.sh` proves. Only `make clean` (`down -v`) deletes `pgdata`. The admin door, if you used it: `docker compose --profile admin stop db-proxy`
+(the stopped container stays on disk until removed and uses nothing). To see the volume: `docker volume ls`.
+
+## 9. Check your understanding
+1. Why does the `postgres` service have no `ports:` line, and why can it not simply get one?
+2. What does `docker compose down` remove, and what does it keep? Which command would delete the data, and why does `tests/04_persistence.sh` not use it?
+3. Why is the migration run by a separate one-shot `migrate` service and not by each API replica when it starts?
+4. In `POST /notes`, what happens when the title is empty, and which layer rejects it before the database is touched?
+5. Why does the isolation test check that an API replica **can** reach `postgres:5432` when its goal is to prove the database is hard to reach?
+
+<details><summary>Answers</summary>
+
+1. Nothing outside the lab network should be able to open a connection to the database. A `ports:` line would publish it on the laptop, and it cannot work anyway: the `private` network is internal, and Docker does not publish ports of containers that are only on an internal network. Admin access goes through the optional `db-proxy` (profile `admin`).
+2. It removes the containers and the networks and **keeps the named volumes** (`pgdata`). `docker compose down -v` (`make clean`) deletes the volumes and the data. The test uses plain `down` because its job is to prove that a restart keeps the data; `down -v` would (correctly) lose it and is blocked in this project.
+3. Three replicas starting together would race to create the same table. One job, run once and finished before the API starts (`service_completed_successfully`), avoids that, and it matches how real deployments run a migration task first.
+4. Pydantic (`NoteIn`, `min_length=1`) rejects it with `422` and an error naming the field; nothing is sent to Postgres.
+5. A "not reachable" result only means something if the same test method *can* succeed somewhere. The positive control (a replica on the private network connects) shows the database is running and the check works, so the failures from the host really come from the network layout.
+
+</details>
+
+## 10. Exercises (optional)
+- Make the persistence test prove the opposite: copy `docker-compose.yml`, remove the `pgdata:/var/lib/postgresql` line from the `postgres` service in the copy, start it with `docker compose -f <copy> -p throwaway up -d`, write a note, `down` and `up` again, and see the note disappear. (Do it under another project name so your real data is untouched.)
+- Extend `04_persistence.sh`: also `PUT` an update before the restart and check the **updated** text after it.
+- Run `make clean` yourself (type `yes`), then `make up`. Check with `\dt` that the `migrate` job recreated the tables, and with `GET /notes` that the data is gone. Which two things did `make clean` delete that `make down` keeps?
+- Add a second migration (for example a `done boolean` column on `notes`), update the model, run `docker compose up -d --build`, and read the `migrate` log. What does `alembic_version` say now?
+- Connect a graphical client (DBeaver, pgAdmin) through the admin door: `docker compose --profile admin up -d db-proxy`, host `127.0.0.1`, port `5432`, user `lab`. Stop the door when you finish.
+
+## 11. Further reading
+- [Amazon RDS: what it is](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Welcome.html) and [Multi-AZ deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html) (AWS)
+- [Backing up and restoring an RDS instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_CommonTasks.BackupRestore.html) (AWS)
+- [PostgreSQL documentation](https://www.postgresql.org/docs/current/) (PostgreSQL)
+- [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html) and [SQLAlchemy documentation](https://docs.sqlalchemy.org/en/latest/) (SQLAlchemy)
+- [FastAPI: SQL databases](https://fastapi.tiangolo.com/tutorial/sql-databases/) (FastAPI)
+- [Docker volumes](https://docs.docker.com/engine/storage/volumes/) and [Compose profiles](https://docs.docker.com/compose/how-tos/profiles/) (Docker)
 
 ## Go deeper
 - Course: [Docker 08 - Volumes and bind mounts](../courses/docker/08-volumes-and-bind-mounts.md)

@@ -37,6 +37,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
 | **IAM** | AWS users, roles and permissions. | Not simulated in this lab (fake credentials only) | 13 |
 | **IaC** (Infrastructure as Code) | Describing infrastructure in files that a tool applies, instead of clicking in a console. | AWS: CloudFormation · Local: Terraform | 13 |
+| **Idempotent** | An operation you can run several times with the same result as running it once. Migrations are idempotent: the second `alembic upgrade head` finds the database already up to date and does nothing. | Local: Alembic, `docker compose up -d` | 04 |
 | **Image** | A read-only package (app + dependencies) from which containers start. | AWS: ECR stores them · Local: built by Docker | 01 |
 | **Internal network** | A Docker network with no gateway: containers on it can talk to each other and to nothing outside. | AWS: private subnet without a NAT Gateway · Local: `internal: true` | 03 |
 | **Internet Gateway / NAT Gateway** | Internet Gateway: the door between a VPC and the internet, in both directions (public subnets). NAT Gateway: lets machines in private subnets start connections *out*, without letting the internet start connections *in*. | AWS only (the closest local thing is a network with a gateway) | 03 |
