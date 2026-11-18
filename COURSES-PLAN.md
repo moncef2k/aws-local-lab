@@ -140,7 +140,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
-| 01 | Relational databases: tables, rows, keys | `01-relational-basics.md` | step 10 (Lab 04) | step 13 | - | Postgres container, `\dt` |
+| 01 | Relational databases: tables, rows, keys | `01-relational-basics.md` | step 10 (Lab 04) | step 13 | AWSLAB-90 | Postgres container, `\dt` |
 | 02 | SQL basics | `02-sql.md` | step 10 (Lab 04) | step 14 | - | `psql` queries; CRUD in step 12 |
 | 03 | PostgreSQL: server, roles, databases | `03-postgresql.md` | step 10 (Lab 04) | step 15 | - | `postgres` service, `pg_isready`, password from `.env` |
 | 04 | Schemas, migrations and Alembic | `04-schemas-and-migrations.md` | step 11 (Lab 04) | step 17 | - | First migration creating `notes`; `migrate` one-shot service, `alembic_version` |
@@ -359,4 +359,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | `fbae44a` | PASS WITH NOTES, notes fixed |
 | step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | PASS WITH NOTES, notes fixed |
 | step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | `79d1f80` (the module file itself landed in `bf8046c` by mistake: `git add docs/courses` picked it up) | PASS WITH NOTES, notes fixed |
+| step 13 | Databases 01 - Relational databases: tables, rows, keys | AWSLAB-90 | _(pending)_ | _(pending)_ |
 
