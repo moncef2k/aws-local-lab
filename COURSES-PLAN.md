@@ -94,7 +94,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | AWSLAB-91 | Compose `environment:` and `.env` / `.env.example` |
 | 07 | Docker networks and service-name DNS | `07-networks.md` | step 3 (Lab 01) | step 14 | AWSLAB-93 | Compose default network (3), `api` resolving to every replica (4-5), `public`/`private` (8) |
 | 08 | Volumes and bind mounts | `08-volumes-and-bind-mounts.md` | step 10 (Lab 04) | step 11 | AWSLAB-86 | Postgres named volume; persistence test (14) |
-| 09 | Docker Compose | `09-compose.md` | step 3 (Lab 01) | step 15 | - | `docker-compose.yml`, `up`, `ps`, `deploy.replicas` |
+| 09 | Docker Compose | `09-compose.md` | step 3 (Lab 01) | step 15 | AWSLAB-95 | `docker-compose.yml`, `up`, `ps`, `deploy.replicas` |
 | 10 | Debugging: logs, exec, inspect | `10-debugging.md` | step 3 (Lab 01) | step 16 | - | `docker compose ps/logs` now; `exec` and `network inspect` later |
 
 ### Networking - IPs, ports, DNS, HTTP, NAT, subnets, firewalls, TLS. (8 modules)
@@ -344,7 +344,8 @@ back and the plan updated.
 8. [x] Step 12 modules written (AWS 06 and Docker 05).
 9. [x] Step 13 modules written (Databases 01 and Docker 06).
 10. [x] Step 14 modules written (Databases 02 and Docker 07).
-11. [ ] Next modules: see "Schedule by lab step" (step 15: Databases 03 and Docker 09).
+11. [x] Step 15 modules written (Databases 03 and Docker 09).
+12. [ ] Next modules: see "Schedule by lab step" (step 16: FastAPI 07 and Docker 10).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -366,4 +367,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 14 | Databases 02 - SQL basics | AWSLAB-92 | `ee7873f` | PASS |
 | step 14 | Docker 07 - Docker networks and service-name DNS | AWSLAB-93 | `fbe97a1` | PASS WITH NOTES, notes fixed |
 | step 15 | Databases 03 - PostgreSQL: server, roles, databases | AWSLAB-94 | _(pending)_ | _(pending)_ |
+| step 15 | Docker 09 - Docker Compose | AWSLAB-95 | _(pending)_ | _(pending)_ |
 
