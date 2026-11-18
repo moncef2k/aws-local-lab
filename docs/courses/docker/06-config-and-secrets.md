@@ -65,7 +65,7 @@ The project's own lines, from `docker-compose.yml` and `.env.example`:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:?...}@postgres:5432/${POSTGRES_DB:-lab}   # built from the pieces
 ```
 ```bash
-# .env.example (committed, fake values)
+# .env.example (committed, fake values; an excerpt)
 LB_HOST_PORT=80
 POSTGRES_PASSWORD=change-me-local-only
 ```
@@ -168,9 +168,16 @@ on the host:                GREETING=[changed-on-the-host]
 The running container still sees `bonjour`. To apply a new value you must **create a new container**: Compose does this for you when you run `docker compose up -d` after changing a service's configuration (it recreates the containers whose configuration changed; not run here). Remember the other half of the lesson from
 [Lab 04](../../labs/04-database.md#step-10--the-postgres-container): Postgres only reads `POSTGRES_PASSWORD` when it starts on an **empty** volume, so changing it later does not change the password stored in the existing data.
 
-**A required variable that is missing:**
+**A required variable that is missing.** A second, 5-line compose file, `required.yml`:
+```yaml
+services:
+  demo:
+    image: alpine:3.24
+    environment:
+      NEEDED: ${NEEDED:?set NEEDED in the environment}
+```
 ```bash
-docker compose -f required.yml config -q          # required.yml uses ${NEEDED:?set NEEDED in the environment}
+docker compose -f required.yml config -q
 NEEDED=x docker compose -f required.yml config -q && echo "config OK (exit 0)"
 ```
 ```text

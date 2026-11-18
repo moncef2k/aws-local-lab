@@ -360,6 +360,6 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | `fbae44a` | PASS WITH NOTES, notes fixed |
 | step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | PASS WITH NOTES, notes fixed |
 | step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | `79d1f80` (the module file itself landed in `bf8046c` by mistake: `git add docs/courses` picked it up) | PASS WITH NOTES, notes fixed |
-| step 13 | Databases 01 - Relational databases: tables, rows, keys | AWSLAB-90 | _(pending)_ | _(pending)_ |
-| step 13 | Docker 06 - Environment variables, config and secrets | AWSLAB-91 | _(pending)_ | _(pending)_ |
+| step 13 | Databases 01 - Relational databases: tables, rows, keys | AWSLAB-90 | `dfcd792` | PASS |
+| step 13 | Docker 06 - Environment variables, config and secrets | AWSLAB-91 | `cbc61b1` | PASS WITH NOTES, notes fixed |
 
