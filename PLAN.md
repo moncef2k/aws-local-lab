@@ -104,7 +104,7 @@ Nothing will be installed system-wide without asking you first.
   healthcheck, no host port. *Check:* `pg_isready` via `docker compose exec`.
 - [x] **11. DB layer + migrations.** `AWSLAB-29` SQLAlchemy + Alembic, first migration (`notes` table), one-shot `migrate`
   service the API waits for. *Check:* table exists (`\dt`), `alembic_version` set.
-- [ ] **12. Notes CRUD.** `AWSLAB-30` `POST/GET/PUT/DELETE /notes`. *Check:* curl the full create→read→update→delete cycle through the LB.
+- [x] **12. Notes CRUD.** `AWSLAB-30` `POST/GET/PUT/DELETE /notes`. *Check:* curl the full create→read→update→delete cycle through the LB.
 - [ ] **13. Admin profile.** `AWSLAB-31` `--profile admin` publishes Postgres on `127.0.0.1:5432` (via a small proxy), off by default.
   *Check:* without the profile `5432` is closed; with it `psql` connects.
 - [ ] **14. DB tests.** `AWSLAB-32` 🔀 `tests/04_persistence.sh` (`down && up` keeps data) and Postgres-not-reachable check
