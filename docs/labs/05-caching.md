@@ -70,7 +70,7 @@ flowchart LR
   lb --> api
   api --> pg
   api -. "from step 16" .-> redis
-  you -. "no route, no port" .-x redis
+  you -. "no route, no port: blocked" .-> redis
 ```
 
 ## 3. Prerequisites
@@ -231,7 +231,7 @@ evicted_keys:47266
 49132
 ```
 (The benchmark prints a progress line that is trimmed here to its last line.) Before: **0** evicted keys. The benchmark wrote 100,000 values of 1 kB (about 100 MB), more than the cache may hold. After: memory is **63.59 MB of 64 MB**, Redis **evicted 47,266 keys** to make room, and **49,132 keys** are left
-(the rest of the roughly 96,000 distinct keys written; keys are random, so some writes hit the same key). No write failed. This is `allkeys-lru` doing its job. Clean up: `redis-cli flushall` empties the cache (it printed `OK`, then `dbsize` was `0`).
+(the 47,266 evicted plus the 49,132 left make about 96,000 keys stored in total; the benchmark's keys are random, so some of the 100,000 writes hit a key that already existed). No write failed. This is `allkeys-lru` doing its job. Clean up: `redis-cli flushall` empties the cache (it printed `OK`, then `dbsize` was `0`).
 
 **Regression check:** the isolation test from Lab 03 still passes with Redis in the stack (only the load balancer publishes a port):
 ```bash

@@ -95,7 +95,7 @@ flowchart LR
   mig -->|"alembic upgrade head"| pg
   mig -. "api starts after it succeeds" .-> api
   pg --- vol
-  you -. "no route, no port" .-x pg
+  you -. "no route, no port: blocked" .-> pg
   you -. "127.0.0.1:5432, only with --profile admin" .-> proxy
   proxy -.-> pg
 ```
