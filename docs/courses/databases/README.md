@@ -11,7 +11,7 @@ Back to the [course index](../README.md). Read each module next to [Lab 04](../.
 |---|---|---|---|
 | 01 | [Relational databases: tables, rows, keys](./01-relational-basics.md) | ✅ written | Lab 04, step 10 |
 | 02 | [SQL basics](./02-sql.md) | ✅ written | Lab 04, step 10 |
-| 03 | PostgreSQL: server, roles, databases | ⬜ planned | Lab 04, step 10 |
+| 03 | [PostgreSQL: server, roles, databases](./03-postgresql.md) | ✅ written | Lab 04, step 10 |
 | 04 | Schemas, migrations and Alembic | ⬜ planned | Lab 04, step 11 |
 | 05 | ORMs and SQLAlchemy | ⬜ planned | Lab 04, step 11 |
 | 06 | Indexes | ⬜ planned | Lab 04, step 12 |
