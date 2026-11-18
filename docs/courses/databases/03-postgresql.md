@@ -101,26 +101,20 @@ GRANT SELECT ON products TO reader;                            -- now it may rea
 ## Hands-on
 A throw-away server (`course-pg3`) with a fake password, so nothing touches the lab. Real output, trimmed.
 
-**1. Start it and list the databases**
+**1. Start it**
 ```bash
 docker run --rm -d --name course-pg3 -e POSTGRES_PASSWORD=demo-only-not-a-secret postgres:18.7-alpine3.24
-until docker exec course-pg3 pg_isready -U postgres -q; do sleep 1; done
-P() { docker exec -i course-pg3 psql -U postgres "$@"; }
-P -tA -c "select datname from pg_database order by datname;"
+until docker exec course-pg3 pg_isready -U postgres -q; do sleep 1; done      # wait until it accepts connections
+P() { docker exec -i course-pg3 psql -U postgres "$@"; }                     # a shortcut for the client
 ```
-```text
-postgres
-shop
-template0
-template1
-```
-(`shop` appears only after exercise 2; a fresh server lists `postgres`, `template0` and `template1`.) One server, several databases.
+(No output: the loop ends silently when the server is ready, a few seconds after the start.)
 
-**2. Create a database and connect to it**
+**2. Create a database, connect to it, list the databases**
 ```bash
 P -c 'CREATE DATABASE shop;'
 docker exec -i course-pg3 psql -U postgres -d shop -tA -c "select current_database(), current_user;" -c '\dn'
 P -tA -c 'SHOW data_directory;' -c 'SHOW port;'
+P -tA -c "select datname from pg_database order by datname;"
 ```
 ```text
 CREATE DATABASE
@@ -128,8 +122,12 @@ shop|postgres
 public|pg_database_owner
 /var/lib/postgresql/18/docker
 5432
+postgres
+shop
+template0
+template1
 ```
-Connected to `shop` as `postgres`; the new database has one schema, `public`. The server's files live in `/var/lib/postgresql/18/docker` (the folder the `pgdata` volume of [Lab 04](../../labs/04-database.md#step-10--the-postgres-container) keeps), and it listens on 5432.
+One server, several databases: the fresh server had `postgres`, `template0` and `template1`, and now `shop` as well. Connected to `shop` as `postgres`; the new database has one schema, `public`. The server's files live in `/var/lib/postgresql/18/docker` (the folder the `pgdata` volume of [Lab 04](../../labs/04-database.md#step-10--the-postgres-container) keeps), and it listens on 5432.
 
 **3. A role that can do nothing, then a little, then not more**
 ```bash

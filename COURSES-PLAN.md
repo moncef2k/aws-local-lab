@@ -366,6 +366,6 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 13 | Docker 06 - Environment variables, config and secrets | AWSLAB-91 | `cbc61b1` | PASS WITH NOTES, notes fixed |
 | step 14 | Databases 02 - SQL basics | AWSLAB-92 | `ee7873f` | PASS |
 | step 14 | Docker 07 - Docker networks and service-name DNS | AWSLAB-93 | `fbe97a1` | PASS WITH NOTES, notes fixed |
-| step 15 | Databases 03 - PostgreSQL: server, roles, databases | AWSLAB-94 | _(pending)_ | _(pending)_ |
-| step 15 | Docker 09 - Docker Compose | AWSLAB-95 | _(pending)_ | _(pending)_ |
+| step 15 | Databases 03 - PostgreSQL: server, roles, databases | AWSLAB-94 | `4d6abfc` | PASS WITH NOTES, notes fixed |
+| step 15 | Docker 09 - Docker Compose | AWSLAB-95 | `94328bb` | PASS WITH NOTES |
 
