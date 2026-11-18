@@ -23,6 +23,10 @@
 | **Network alias** | An extra DNS name given to a container on a network. Several containers can share one alias. |
 | **Internal network** | A network with **no route out**: its containers cannot reach the internet and nothing can be published from it ([Lab 03](../../labs/03-networking.md)). |
 | **Published port** | A port of a container made reachable from your machine (`-p`, `ports:`), as for the load balancer ([Lab 01](../../labs/01-containers.md)). |
+| **Docker Compose** | The tool that starts several containers from one file, `docker-compose.yml`, and creates their networks for them. See [Lab 01](../../labs/01-containers.md). |
+| **Replica** | One of several identical copies of the same container (the project runs three copies of the API). |
+| **Load balancer** | A program that receives requests and spreads them over several copies of an app ([Lab 02](../../labs/02-load-balancing.md)). |
+| **Nginx** | The web server and reverse proxy this project uses as its load balancer. |
 
 ## The idea
 **Analogy.** A user-defined Docker network is an **office with an internal phone directory**. Every colleague (container) is listed by name, so you dial "api" and the switchboard connects you; you never need the extension number, which changes whenever someone moves desks.
