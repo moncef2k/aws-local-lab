@@ -12,7 +12,7 @@ Back to the [course index](../README.md).
 | 01 | [Images, containers and their lifecycle](./01-images-and-containers.md) | ✅ written | Lab 01, step 2 |
 | 02 | [Docker Desktop on Windows (WSL2)](./02-docker-desktop-wsl2.md) | ✅ written | Lab 00 |
 | 03 | [Dockerfile instructions](./03-dockerfile.md) | ✅ written | Lab 01, step 2 |
-| 04 | Layers and the build cache | ⬜ planned | Lab 01, step 2 |
+| 04 | [Layers and the build cache](./04-layers-and-build-cache.md) | ✅ written | Lab 01, step 2 |
 | 05 | Tags, digests and registries | ⬜ planned | Lab 01, step 2 |
 | 06 | Environment variables, config and secrets | ⬜ planned | Lab 01, step 3 |
 | 07 | Docker networks and service-name DNS | ⬜ planned | Lab 01, step 3 |

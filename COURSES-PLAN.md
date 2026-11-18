@@ -89,7 +89,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 01 | Images, containers and their lifecycle | `01-images-and-containers.md` | step 2 (Lab 01) | step 8 | AWSLAB-81 | `docker build`, `docker run`, stop/rm (2); `docker kill` and restart (6) |
 | 02 | Docker Desktop on Windows (WSL2) | `02-docker-desktop-wsl2.md` | step 0 (Lab 00) | step 9 | AWSLAB-83 | Environment check; what actually runs on this laptop (cAdvisor tweaks again in step 31) |
 | 03 | Dockerfile instructions | `03-dockerfile.md` | step 2 (Lab 01) | step 10 | AWSLAB-85 | `api/Dockerfile` (FROM, COPY, RUN, USER, CMD) |
-| 04 | Layers and the build cache | `04-layers-and-build-cache.md` | step 2 (Lab 01) | step 11 | - | Dependencies copied before code to reuse the cache |
+| 04 | Layers and the build cache | `04-layers-and-build-cache.md` | step 2 (Lab 01) | step 11 | AWSLAB-87 | Dependencies copied before code to reuse the cache |
 | 05 | Tags, digests and registries | `05-tags-and-registries.md` | step 2 (Lab 01) | step 12 | - | Pinned `python:3.12-slim-...`, the no-`:latest` rule |
 | 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | - | Compose `environment:` and `.env` / `.env.example` |
 | 07 | Docker networks and service-name DNS | `07-networks.md` | step 3 (Lab 01) | step 14 | - | Compose default network (3), `api` resolving to every replica (4-5), `public`/`private` (8) |
@@ -353,4 +353,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
 | step 10 | Docker 03 - Dockerfile instructions | AWSLAB-85 | `5042d55` | PASS WITH NOTES (index/plan updates landed in `df8fde2`) |
 | step 10 | AWS 04 - VPC: subnets, route tables, gateways | AWSLAB-84 | `df8fde2` (message lacks ticket key) | PASS WITH NOTES |
+| step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | _(pending)_ | _(pending)_ |
 
