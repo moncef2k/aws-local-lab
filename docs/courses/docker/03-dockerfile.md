@@ -65,7 +65,7 @@ sequenceDiagram
 ```
 
 ## The code, line by line
-First the project's real file, `api/Dockerfile`:
+First the project's real file, `api/Dockerfile` (as written in step 2; since [Lab 04, step 11](../../labs/04-database.md#step-11--the-database-layer-the-first-migration-and-the-migrate-job) the line `COPY main.py .` reads `COPY main.py db.py alembic.ini ./` followed by `COPY migrations ./migrations`):
 
 ```dockerfile
 FROM python:3.12.16-slim-trixie
