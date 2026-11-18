@@ -91,7 +91,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 03 | Dockerfile instructions | `03-dockerfile.md` | step 2 (Lab 01) | step 10 | AWSLAB-85 | `api/Dockerfile` (FROM, COPY, RUN, USER, CMD) |
 | 04 | Layers and the build cache | `04-layers-and-build-cache.md` | step 2 (Lab 01) | step 11 | AWSLAB-87 | Dependencies copied before code to reuse the cache |
 | 05 | Tags, digests and registries | `05-tags-and-registries.md` | step 2 (Lab 01) | step 12 | AWSLAB-89 | Pinned `python:3.12-slim-...`, the no-`:latest` rule |
-| 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | - | Compose `environment:` and `.env` / `.env.example` |
+| 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | AWSLAB-91 | Compose `environment:` and `.env` / `.env.example` |
 | 07 | Docker networks and service-name DNS | `07-networks.md` | step 3 (Lab 01) | step 14 | - | Compose default network (3), `api` resolving to every replica (4-5), `public`/`private` (8) |
 | 08 | Volumes and bind mounts | `08-volumes-and-bind-mounts.md` | step 10 (Lab 04) | step 11 | AWSLAB-86 | Postgres named volume; persistence test (14) |
 | 09 | Docker Compose | `09-compose.md` | step 3 (Lab 01) | step 15 | - | `docker-compose.yml`, `up`, `ps`, `deploy.replicas` |
@@ -342,7 +342,8 @@ back and the plan updated.
 6. [x] Step 10 modules written (AWS 04 and Docker 03).
 7. [x] Step 11 modules written (Docker 08 and Docker 04).
 8. [x] Step 12 modules written (AWS 06 and Docker 05).
-9. [ ] Next modules: see "Schedule by lab step" (step 13: Databases 01 and Docker 06).
+9. [x] Step 13 modules written (Databases 01 and Docker 06).
+10. [ ] Next modules: see "Schedule by lab step" (step 14: Databases 02 and Docker 07).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -360,4 +361,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | PASS WITH NOTES, notes fixed |
 | step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | `79d1f80` (the module file itself landed in `bf8046c` by mistake: `git add docs/courses` picked it up) | PASS WITH NOTES, notes fixed |
 | step 13 | Databases 01 - Relational databases: tables, rows, keys | AWSLAB-90 | _(pending)_ | _(pending)_ |
+| step 13 | Docker 06 - Environment variables, config and secrets | AWSLAB-91 | _(pending)_ | _(pending)_ |
 

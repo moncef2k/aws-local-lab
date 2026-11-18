@@ -14,7 +14,7 @@ Back to the [course index](../README.md).
 | 03 | [Dockerfile instructions](./03-dockerfile.md) | ✅ written | Lab 01, step 2 |
 | 04 | [Layers and the build cache](./04-layers-and-build-cache.md) | ✅ written | Lab 01, step 2 |
 | 05 | [Tags, digests and registries](./05-tags-and-registries.md) | ✅ written | Lab 01, step 2 |
-| 06 | Environment variables, config and secrets | ⬜ planned | Lab 01, step 3 |
+| 06 | [Environment variables, config and secrets](./06-config-and-secrets.md) | ✅ written | Lab 01, step 3 |
 | 07 | Docker networks and service-name DNS | ⬜ planned | Lab 01, step 3 |
 | 08 | [Volumes and bind mounts](./08-volumes-and-bind-mounts.md) | ✅ written | Lab 04, step 10 |
 | 09 | Docker Compose | ⬜ planned | Lab 01, step 3 |

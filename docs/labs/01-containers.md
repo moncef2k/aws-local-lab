@@ -355,3 +355,4 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 - Course: [Docker 03 - Dockerfile instructions](../courses/docker/03-dockerfile.md)
 - Course: [Docker 04 - Layers and the build cache](../courses/docker/04-layers-and-build-cache.md)
 - Course: [Docker 05 - Tags, digests and registries](../courses/docker/05-tags-and-registries.md)
+- Course: [Docker 06 - Environment variables, config and secrets](../courses/docker/06-config-and-secrets.md)
