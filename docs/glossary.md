@@ -18,6 +18,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **CloudWatch** | AWS monitoring: metrics, logs, dashboards, alarms. | Local: Prometheus + Grafana + Loki | 09 |
 | **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
+| **CRUD** | Create, Read, Update, Delete: the four basic things you can do with stored records. In an HTTP API they map to `POST`, `GET`, `PUT`, `DELETE`. | Local: the `/notes` routes of the API | 04 |
 | **Defence in depth** | Several layers of protection, so that getting through one (say, a bug in the API) does not give access to everything (say, the database). | AWS: public/private subnets + security groups · Local: `public` and `private` networks | 03 |
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
 | **Dockerfile** | The recipe to build an image. | AWS: same, then pushed to ECR | 01 |
@@ -57,6 +58,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
+| **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
@@ -65,6 +67,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **S3** | AWS object storage (files in buckets). | Local: MinIO | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |
+| **Session (database)** | A short conversation with the database inside which changes are staged and then saved with `commit` (or dropped). The API opens one per request and closes it at the end. | Local: SQLAlchemy `Session` | 04 |
 | **SQLAlchemy** | The Python library used for the database layer: engine (connection pool), ORM models, sessions. | Local library (works the same against RDS) | 04 |
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
 | **Subnet** | A slice of a bigger network range. Machines in the same subnet reach each other directly; what leaves it goes through a gateway. | AWS: VPC subnet (lives in one AZ) · Local: Docker network | 03 |

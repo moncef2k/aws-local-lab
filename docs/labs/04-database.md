@@ -1,9 +1,9 @@
 # Lab 04 — Database (RDS)
 
 > **AWS equivalent:** Amazon RDS for PostgreSQL, DB subnet groups, security groups, snapshots  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10) and `cc957ec` (step 11) on `dev`
+> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10), `cc957ec` (step 11) and `d7ac631` (step 12) on `dev`
 
-> **Status:** in progress. Steps 10–11 are written; steps 12–14 (notes API, admin profile, tests) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 10–12 are written; steps 13–14 (admin profile, tests) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain why an application keeps its data in a **database** and not in its own files or memory.
@@ -11,6 +11,7 @@
 - Run PostgreSQL in a container: private network only, data in a **named volume**, password from `.env`, with a healthcheck.
 - Prove that the database is not reachable from your machine, and that its data outlives its container.
 - Describe a **migration** (a versioned change to the database structure), write one with **Alembic**, and run it as a one-shot job before the API starts.
+- Build a **CRUD** API (create, read, update, delete) that stores its data in the database, with validated input and one database session per request.
 - Explain what an **ORM** (SQLAlchemy) does: you describe tables as Python classes and the library writes the SQL.
 
 ## 2. Theory
@@ -31,6 +32,11 @@ in the **same order**. A **migration** is a small numbered script that makes one
 already seen, so running the migrations twice is harmless. Think of the **numbered renovation orders** of a building: order 7 is only carried out once, after order 6.
 Writing the SQL by hand for every table is tedious, so the application uses an **ORM** (*object-relational mapper*, here **SQLAlchemy**): a Python class `Note` stands for the
 table `notes`, one object for one row, and the library produces the SQL. **Alembic** is the migration tool of the SQLAlchemy family.
+
+To expose the data, the API offers **CRUD** operations: **C**reate, **R**ead, **U**pdate, **D**elete, the four things you can do with a stored record. Over HTTP each one has its
+usual *verb* and *status code*: `POST` creates (answer `201 Created`), `GET` reads (`200`, or `404 Not Found` if it does not exist), `PUT` replaces (`200`), `DELETE` removes (`204 No Content`,
+"done, nothing to send back"). Think of the clerk's **counter**: you can file a new folder, ask to see one, hand in a corrected version, or have one shredded. The API also
+**checks what you hand in** before it reaches the database (a note needs a title): a *validation* library, **Pydantic**, does that, and answers `422` when the input is wrong.
 
 Two consequences shape the architecture:
 - The database is the one place that **must not lose data**, so it gets its own protected storage (a *volume*) and is never thrown away casually.
@@ -622,6 +628,191 @@ curl -s -w ' [HTTP %{http_code}]\n' localhost:8081/whoami
 - Order is guaranteed by Compose: Postgres healthy → `migrate` runs and exits 0 → the three API replicas start → the load balancer starts. In AWS the same thing is a deployment pipeline
   that runs a migration task before it switches traffic to the new version.
 - Because three replicas share one image, the migration is **not** run by the API itself: three replicas starting together would race to create the same table. One job, run once, avoids that.
+
+### Step 12 — The notes CRUD
+**Why:** the database now has a `notes` table, but nothing writes to it. This step turns the API into a small notes service: create, read, update and delete notes, with the data stored in
+Postgres and shared by all three replicas.
+
+**Do it.** Replace `api/main.py` with this (only `/health` and `/whoami` existed before; they are unchanged):
+
+```python
+import socket
+from datetime import datetime
+from typing import Annotated, Iterator
+
+from fastapi import Depends, FastAPI, HTTPException, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from db import Note, SessionLocal
+
+app = FastAPI(title="aws-local-lab API")
+
+
+def get_db() -> Iterator[Session]:
+    """One database session per request, always closed afterwards (even after an error)."""
+    with SessionLocal() as session:
+        yield session
+
+
+DbSession = Annotated[Session, Depends(get_db)]
+
+
+class NoteIn(BaseModel):
+    """What a client sends: the body is optional."""
+
+    title: str = Field(min_length=1, max_length=200)
+    body: str = ""
+
+
+class NoteOut(NoteIn):
+    """What the API answers: the client's fields plus what the database added."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
+def get_note_or_404(db: Session, note_id: int) -> Note:
+    note = db.get(Note, note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+    return note
+
+
+@app.get("/health")
+def health():
+    """Liveness probe: answers as long as the process is up."""
+    return {"status": "ok"}
+
+
+@app.get("/whoami")
+def whoami():
+    """Which container answered? Inside Docker the hostname is the container id."""
+    return {"hostname": socket.gethostname()}
+
+
+@app.post("/notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
+def create_note(data: NoteIn, db: DbSession):
+    note = Note(title=data.title, body=data.body)
+    db.add(note)
+    db.commit()
+    db.refresh(note)  # reload: the database filled in id and created_at
+    return note
+
+
+@app.get("/notes", response_model=list[NoteOut])
+def list_notes(db: DbSession):
+    return db.scalars(select(Note).order_by(Note.id)).all()
+
+
+@app.get("/notes/{note_id}", response_model=NoteOut)
+def read_note(note_id: int, db: DbSession):
+    return get_note_or_404(db, note_id)
+
+
+@app.put("/notes/{note_id}", response_model=NoteOut)
+def update_note(note_id: int, data: NoteIn, db: DbSession):
+    note = get_note_or_404(db, note_id)
+    note.title = data.title
+    note.body = data.body
+    db.commit()
+    return note
+
+
+@app.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_note(note_id: int, db: DbSession):
+    db.delete(get_note_or_404(db, note_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `from db import Note, SessionLocal` | Reuses the engine and the model from step 11. | Without the `DATABASE_URL` variable this import stops the app at start (`KeyError`): the container would be unhealthy. |
+| `def get_db()` with `yield` | A **dependency**: FastAPI calls it before the route, passes the session in, and runs the code after `yield` when the request ends. `with ... as session` closes the session in all cases. | Without the `with`, connections would leak and the pool would run dry. |
+| `DbSession = Annotated[Session, Depends(get_db)]` | A shortcut: "a parameter of this type is filled by `get_db`". | Writing `db: Session` alone would make FastAPI treat it as request input. |
+| `class NoteIn(BaseModel)` | The shape of what clients may send. `Field(min_length=1, max_length=200)` rejects an empty or too long title; `body` defaults to `""`. | Remove the limits and a very long title would reach the database, which refuses it (`varchar(200)`) and the client would get a `500` instead of a clear `422`. |
+| `class NoteOut(NoteIn)` + `from_attributes=True` | The shape of the answer: everything in `NoteIn` plus `id` and `created_at`. `from_attributes` lets Pydantic read the fields from a SQLAlchemy `Note` object. | Without it, returning a `Note` raises a validation error. |
+| `response_model=NoteOut` | FastAPI converts the returned object to exactly these fields (and documents them in `/docs`). | Without it, a SQLAlchemy object cannot be turned into JSON. |
+| `status_code=201` / `204` | The success codes for "created" and "deleted, no content". | The default `200` works but is less precise. |
+| `db.add(note)` → `db.commit()` → `db.refresh(note)` | Stage the new row, write it to Postgres (`INSERT`), then reload it so `id` and `created_at` (filled by the database) are known. | Without `commit` nothing is saved: the session closes and the change is rolled back. |
+| `db.get(Note, note_id)` | Fetch one row by primary key; `None` if it does not exist. | |
+| `raise HTTPException(404)` | Stops the route and answers `404` with a JSON message. | Without it a missing note would crash the route with a `500`. |
+| `update_note`: set attributes, `commit` | SQLAlchemy notices the changes and sends an `UPDATE`. | Forget `commit` and the update is lost. |
+| `delete_note` | `DELETE` the row; answer `204` with an empty body. | |
+| `order_by(Note.id)` | A list has no guaranteed order in SQL unless you ask for one. | Without it, rows may come back in any order. |
+
+**Rebuild and restart** (the `migrate` job runs first, finds nothing to do, and exits; the API replicas are recreated):
+```bash
+docker compose up -d --build           # add LB_HOST_PORT=8081 in front if port 80 is busy
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+```
+```text
+SERVICE    STATUS
+api        Up 16 seconds (healthy)
+api        Up 16 seconds (healthy)
+api        Up 16 seconds (healthy)
+lb         Up 16 minutes (healthy)
+postgres   Up 17 minutes (healthy)
+```
+(`migrate` is not listed because `ps` hides stopped containers; `-a` shows it.)
+
+**Check — the full cycle through the load balancer** (port 8081 here because port 80 was busy, see Troubleshooting; use your own port):
+```bash
+B=localhost:8081
+curl -s -i -X POST $B/notes -H 'Content-Type: application/json' -d '{"title":"first note","body":"hello from curl"}'   # create
+curl -s -w ' [HTTP %{http_code}]\n' $B/notes/1                                                                         # read
+curl -s -w ' [HTTP %{http_code}]\n' -X PUT $B/notes/1 -H 'Content-Type: application/json' -d '{"title":"first note (edited)","body":"changed"}'   # update
+curl -s -w ' [HTTP %{http_code}]\n' $B/notes                                                                            # list
+curl -s -o /dev/null -w 'DELETE [HTTP %{http_code}]\n' -X DELETE $B/notes/1                                             # delete
+curl -s -w ' [HTTP %{http_code}]\n' $B/notes/1                                                                         # read again
+curl -s -w ' [HTTP %{http_code}]\n' -X POST $B/notes -H 'Content-Type: application/json' -d '{"title":""}'              # bad input
+```
+```text
+HTTP/1.1 201 Created
+{"title":"first note","body":"hello from curl","id":1,"created_at":"2026-11-18T22:17:36.598347Z"}
+{"title":"first note","body":"hello from curl","id":1,"created_at":"2026-11-18T22:17:36.598347Z"} [HTTP 200]
+{"title":"first note (edited)","body":"changed","id":1,"created_at":"2026-11-18T22:17:36.598347Z"} [HTTP 200]
+[{"title":"first note (edited)","body":"changed","id":1,"created_at":"2026-11-18T22:17:36.598347Z"}] [HTTP 200]
+DELETE [HTTP 204]
+{"detail":"note not found"} [HTTP 404]
+{"detail":[{"type":"string_too_short","loc":["body","title"],"msg":"String should have at least 1 character","input":"","ctx":{"min_length":1}}]} [HTTP 422]
+```
+(The `-i` output is trimmed to the status line and the body.) Read it step by step: `201` and the new note with `id: 1` and a `created_at` the **database** filled in; `200` on read; the update keeps
+the same `id` and `created_at` and changes the text; the list shows one note; `204` on delete; reading it again gives `404 note not found`; and an empty title is refused with `422` before
+anything touches the database (`loc` says which field, `msg` why).
+
+**Check — the data is in Postgres, shared by all replicas:**
+```bash
+curl -s -o /dev/null -w 'POST [HTTP %{http_code}]\n' -X POST $B/notes -H 'Content-Type: application/json' -d '{"title":"seen in psql","body":"stored in postgres"}'
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select id, title, body from notes;"'
+for i in $(seq 1 12); do curl -s $B/whoami; echo; done | sort | uniq -c
+curl -s -o /dev/null -w 'cleanup DELETE [HTTP %{http_code}]\n' -X DELETE $B/notes/2
+```
+```text
+POST [HTTP 201]
+ id |    title     |        body        
+----+--------------+--------------------
+  2 | seen in psql | stored in postgres
+(1 row)
+
+      4 {"hostname":"35fca1572408"}
+      4 {"hostname":"e399200f024d"}
+      4 {"hostname":"fbe46390cca3"}
+cleanup DELETE [HTTP 204]
+```
+The note created through the load balancer is a row in the `notes` table (`id` 2: the counter continues after the deleted note 1, ids are never reused). Twelve requests were spread
+evenly over the three replicas (4 each), and any of them can read any note because the data is not in the replicas but in the database: the **stateless** API of [Lab 01](./01-containers.md) now has
+somewhere to keep its state.
+
+**What just happened:**
+- The API became a real service: five routes on `/notes` and the same code in all three replicas.
+- Each request gets its **own session** (a short conversation with the database) and closes it at the end; the engine's pool reuses the underlying connections.
+- **Input is validated** at the edge (`422`) and **output is shaped** by `NoteOut`: clients only receive the fields you declared.
+- Nothing changed in the network: the database is still only reachable from the `private` network; clients only ever talk to the load balancer.
 
 ## 6. Troubleshooting (so far)
 | Symptom | Cause | Fix |
