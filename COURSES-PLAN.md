@@ -355,8 +355,8 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
 | step 10 | Docker 03 - Dockerfile instructions | AWSLAB-85 | `5042d55` | PASS WITH NOTES (index/plan updates landed in `df8fde2`) |
 | step 10 | AWS 04 - VPC: subnets, route tables, gateways | AWSLAB-84 | `df8fde2` (message lacks ticket key) | PASS WITH NOTES |
-| step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | _(pending)_ | _(pending)_ |
-| step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | _(pending)_ |
 | step 11 | Docker 08 - Volumes and bind mounts | AWSLAB-86 | `7e5e393` | PASS WITH NOTES, notes fixed |
 | step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | `fbae44a` | PASS WITH NOTES, notes fixed |
+| step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | PASS WITH NOTES, notes fixed |
+| step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | `79d1f80` (the module file itself landed in `bf8046c` by mistake: `git add docs/courses` picked it up) | PASS WITH NOTES, notes fixed |
 

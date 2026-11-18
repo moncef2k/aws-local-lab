@@ -18,6 +18,9 @@
 | **Tag** | A human-readable label stuck on an image inside a repository (`3.12.16-slim-trixie`). One image can have several tags, and a tag can be moved to another image. |
 | **Digest** | The image's **fingerprint**: `sha256:` followed by a long number computed from its content. Same content, same digest; any change, a different digest. |
 | **Hash (SHA-256)** | A function that turns any data into a fixed-length fingerprint. Change one byte and the fingerprint is completely different. |
+| **Layer** | One slice of an image (the result of one Dockerfile instruction). An image is a stack of layers; a registry stores them separately. See [Docker 04](./04-layers-and-build-cache.md). |
+| **Manifest** | A small file that lists an image's layers and settings. A tag points to a manifest, and the digest is the fingerprint of that manifest. |
+| **Go template** | The tiny pattern language inside `--format '{{.Field}}'` options, used to pick fields out of Docker's output. See [Docker 03](./03-dockerfile.md). |
 | **Pull** | Download an image from a registry to your machine. |
 | **Push** | Upload an image from your machine to a registry. |
 | **Multi-platform image** | One name that holds several builds of the same image (for example for Intel and for ARM processors); Docker picks the one that fits your machine. |
@@ -141,6 +144,8 @@ docker pull localhost:5000/lab/alpine:3.24         # get it back from the regist
 ```
 ```text
 3.24: digest: sha256:0f49f331d9212aff…  size: 1022
+ Info -> Not all multiplatform-content is present and only the available single-platform image was pushed
+         sha256:f59abe656b69… -> sha256:0f49f331d9212aff…
 {"repositories":["lab/alpine"]}
 {"name":"lab/alpine","tags":["3.24"]}
 Untagged: localhost:5000/lab/alpine:3.24

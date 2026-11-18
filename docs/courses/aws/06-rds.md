@@ -16,6 +16,11 @@
 | **Managed service** | A service where AWS runs the machines and the software for you (installs, patches, replaces broken hardware) and you only use it. |
 | **RDS** (Relational Database Service) | AWS's managed service for relational databases (PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Db2, and Aurora). |
 | **DB instance** | One database server run by RDS: an engine, a size, and storage. |
+| **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one ([AWS 04](./04-vpc.md)). |
+| **DNS name** | A human-readable address (`name.example.com`) that the network turns into an IP address; it can be repointed to another machine without clients noticing. |
+| **EBS** (Elastic Block Store) | AWS's network disks: a volume that behaves like a hard drive and outlives the server it is attached to. |
+| **CloudWatch** | AWS's monitoring service: metrics, logs and alarms (covered in a later module of this course). |
+| **Aurora** | A database engine built by AWS, compatible with MySQL or PostgreSQL, that RDS can also run; it has its own storage design. Not used in this project. |
 | **Engine** | The database software itself (here PostgreSQL) and its version. |
 | **Instance class** | The size of the server: CPU and memory (names like `db.t4g.micro`, `db.m`, `db.r`). A bigger class costs more. |
 | **Storage** | The disk (EBS volume) where the data lives; you choose its type and size, and it can survive the server being replaced. |
