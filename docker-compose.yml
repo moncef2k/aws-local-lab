@@ -1,5 +1,10 @@
 name: aws-local-lab
 
+# The address of the database, shared by the API and the migration job (like an RDS endpoint
+# given to every app). "postgres" is the service name: Docker DNS turns it into the container's IP.
+x-db-env: &db-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-lab}
+
 services:
   api:
     build: ./api
@@ -8,8 +13,13 @@ services:
       # Three identical copies. The load balancer finds them all through the DNS name "api".
       replicas: 3
     environment:
+      <<: *db-env
       # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
       UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+    depends_on:
+      # The API starts only after the migration finished successfully (the table exists).
+      migrate:
+        condition: service_completed_successfully
     # No published port any more: the API is only reachable through the load balancer.
     networks:
       # Private subnet: only this network, so no route to the internet and no door to the host.
@@ -21,6 +31,21 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+
+  # One-shot job: same image as the API, runs "alembic upgrade head" and exits. It is the
+  # equivalent of a migration task run before a deployment (for example an ECS task or a CI step).
+  migrate:
+    build: ./api
+    image: aws-local-lab-api:0.1.0
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *db-env
+    networks:
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   lb:
     image: nginx:1.30.6-alpine
