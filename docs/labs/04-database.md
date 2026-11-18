@@ -952,7 +952,7 @@ closed again
   PASS  api has no published port
 02_load_balancing: all checks passed
 ```
-(Test output trimmed to the last lines.) After `stop`, port 5432 is closed again. The existing tests still pass: with the proxy off, the stack is exactly as before. The stopped `db-proxy` container stays on disk, doing nothing, until you remove it.
+(Test output trimmed to the last lines.) After `stop`, port 5432 is closed again. The existing tests still pass: with the proxy off, the stack is exactly as before. The stopped `db-proxy` container stays on disk, doing nothing, until you remove it (a plain `docker compose down` ignores it; see Troubleshooting).
 
 **What just happened:**
 - You added a **side door** with three safeguards: it only exists when you ask (`profile`), it only listens on your own machine (`127.0.0.1`), and the database password is still required.
@@ -1103,7 +1103,7 @@ The last five lines are new. **Can it fail?** Switch the admin door on and run i
   PASS  an API replica reaches postgres:5432 on the private network
 03_network_isolation: FAILED
 ```
-The test describes the lab in its **default** state: with the admin door open the original "only the load balancer publishes a port" check turns red (correctly: `db-proxy` publishes one), while the new port-5432 check says it is skipping on purpose. Stop the proxy and it is green again.
+The test describes the lab in its **default** state: with the admin door open the original "only the load balancer publishes a port" check turns red (correctly: `db-proxy` publishes one), while the new port-5432 check says it is skipping on purpose. Stop the proxy and it is green again. (One more limit: the "`127.0.0.1:5432` is closed" check cannot tell *who* listens. If another program on your machine already uses port 5432, that check fails although the lab is fine.)
 
 **Check — the persistence test:**
 ```bash
@@ -1163,6 +1163,8 @@ docker compose port postgres 5432                                               
 | `Bind for 0.0.0.0:80 failed: port is already allocated` when `lb` starts | Another container (here `docker-nginx-1`, from a different Compose project) already publishes port 80 on your machine. Find it with `docker ps --format '{{.Names}}\t{{.Ports}}'`. | Stop the other project, or choose another port for the lab: `LB_HOST_PORT=8081` in `.env` (or on the command line for one run) and use `localhost:8081`. |
 | `psql: error: ... FATAL:  password authentication failed for user "root"` when connecting from a client container with `--env-file .env` | `.env` does not define `POSTGRES_USER` (Compose silently uses the default `lab`), so inside the client container the variable is empty and `psql` falls back to the container's user, `root`. | Pass the user explicitly, with the same default Compose uses: `-U "${POSTGRES_USER:-lab}" -d "${POSTGRES_DB:-lab}"`. |
 | `tests/03_network_isolation.sh` reports `FAIL  expected only lb to publish a port, got: db-proxy ...` | The admin door is open: `db-proxy` (profile `admin`) publishes `127.0.0.1:5432` on purpose, and the test describes the default state. | Stop it (`docker compose --profile admin stop db-proxy`) and run the test again. |
+| `Error response from daemon: failed to set up container networking: network <id> not found` when starting `db-proxy` | A *stopped* `db-proxy` container from an earlier session is still on disk, and a plain `docker compose down` in between **ignored it** (Compose only handles services of the active profiles) while removing and re-creating the networks it pointed to. | Re-create it: `docker compose --profile admin up -d --force-recreate db-proxy`, or remove it for good with `docker compose --profile admin down`. |
+| `docker compose down` prints `Network aws-local-lab_private Resource is still in use` (and `..._public`), yet exits with code 0, and `db-proxy` is still running | The admin door was open: `db-proxy` is attached to both networks and plain `down` does not stop it, so the networks cannot be removed. | Use `docker compose --profile admin down`, which includes `db-proxy`. (`tests/04_persistence.sh` calls the plain `down`: switch the admin door off before running it.) |
 
 ## 7. Going to real AWS
 - **What changes:** an **RDS for PostgreSQL** instance (or Aurora PostgreSQL) in **private subnets** chosen through a **DB subnet group** spanning at least two availability zones. Its **security group** allows port 5432 **only from the API's security group**
@@ -1184,7 +1186,7 @@ make up            # starts again: the notes are still there
 make clean         # deletes the volume too (ALL lab data); it asks you to type "yes" first - run it yourself
 ```
 `make down` is `docker compose down`: it keeps named volumes, which is exactly what `tests/04_persistence.sh` proves. Only `make clean` (`down -v`) deletes `pgdata`. The admin door, if you used it: `docker compose --profile admin stop db-proxy`
-(the stopped container stays on disk until removed and uses nothing). To see the volume: `docker volume ls`.
+(the stopped container stays on disk and uses nothing), or remove the door together with everything else with `docker compose --profile admin down`: a plain `docker compose down` ignores it. To see the volume: `docker volume ls`.
 
 ## 9. Check your understanding
 1. Why does the `postgres` service have no `ports:` line, and why can it not simply get one?
@@ -1204,7 +1206,7 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 </details>
 
 ## 10. Exercises (optional)
-- Make the persistence test prove the opposite: copy `docker-compose.yml`, remove the `pgdata:/var/lib/postgresql` line from the `postgres` service in the copy, start it with `docker compose -f <copy> -p throwaway up -d`, write a note, `down` and `up` again, and see the note disappear. (Do it under another project name so your real data is untouched.)
+- Make the persistence test prove the opposite: copy `docker-compose.yml`, remove the `pgdata:/var/lib/postgresql` line from the `postgres` service in the copy, start it with `docker compose -f <copy> -p throwaway up -d`, write a note, `down` and `up` again, and see the note disappear. (Do it under another project name so your real data is untouched, and give it a different `LB_HOST_PORT` so it does not fight for the load balancer's host port.)
 - Extend `04_persistence.sh`: also `PUT` an update before the restart and check the **updated** text after it.
 - Run `make clean` yourself (type `yes`), then `make up`. Check with `\dt` that the `migrate` job recreated the tables, and with `GET /notes` that the data is gone. Which two things did `make clean` delete that `make down` keeps?
 - Add a second migration (for example a `done boolean` column on `notes`), update the model, run `docker compose up -d --build`, and read the `migrate` log. What does `alembic_version` say now?
