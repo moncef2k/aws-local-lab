@@ -1222,3 +1222,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [Docker 08 - Volumes and bind mounts](../courses/docker/08-volumes-and-bind-mounts.md)
 - Course: [AWS 06 - RDS: managed databases](../courses/aws/06-rds.md)
 - Course: [Databases 01 - Relational databases: tables, rows, keys](../courses/databases/01-relational-basics.md)
+- Course: [Databases 02 - SQL basics](../courses/databases/02-sql.md)
