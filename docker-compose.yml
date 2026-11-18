@@ -16,10 +16,16 @@ services:
       <<: *db-env
       # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
       UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+      # The cache address (like an ElastiCache endpoint) and how long a cached note stays valid.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
     depends_on:
       # The API starts only after the migration finished successfully (the table exists).
       migrate:
         condition: service_completed_successfully
+      # ... and once the cache answers (the API still works without it, see api/main.py).
+      redis:
+        condition: service_healthy
     # No published port any more: the API is only reachable through the load balancer.
     networks:
       # Private subnet: only this network, so no route to the internet and no door to the host.
