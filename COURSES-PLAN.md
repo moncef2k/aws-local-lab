@@ -339,7 +339,8 @@ back and the plan updated.
 3. [x] Workflow changes applied (`AWSLAB-79 docs: tool courses workflow`, commit `8d2e3da`).
 4. [x] First two modules written at the stop of step 8 (see the progress log).
 5. [x] Step 9 modules written (Networking 07 and Docker 02).
-6. [ ] Next modules: see "Schedule by lab step" (step 10: AWS 04 and Docker 03).
+6. [x] Step 10 modules written (AWS 04 and Docker 03).
+7. [ ] Next modules: see "Schedule by lab step" (step 11: Docker 04 and Docker 08).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -350,4 +351,6 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 8 | Networking 06 - Subnets and CIDR | AWSLAB-80 | `66ff45a` (+ fixes `0abb548`, `8cb0f1a`) | PASS WITH NOTES, notes fixed |
 | step 9 | Networking 07 - Firewalls and security groups | AWSLAB-82 | `45a8506` (+ fix `1a47189`) | PASS WITH NOTES, notes fixed |
 | step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
+| step 10 | Docker 03 - Dockerfile instructions | AWSLAB-85 | `5042d55` | PASS WITH NOTES (index/plan updates landed in `df8fde2`) |
+| step 10 | AWS 04 - VPC: subnets, route tables, gateways | AWSLAB-84 | `df8fde2` (message lacks ticket key) | PASS WITH NOTES |
 
