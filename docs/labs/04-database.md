@@ -827,8 +827,8 @@ Real RDS has the same problem, and the answer is never "open the database to the
 container proves it:
 ```bash
 docker run --rm -d --name course-internal-test --network aws-local-lab_private -p 127.0.0.1:5999:80 nginx:1.30.6-alpine
-docker port course-internal-test
-curl -s -m 4 -o /dev/null -w 'HTTP %{http_code}\n' localhost:5999 || echo "no answer (curl exit $?)"
+echo "--- docker port:"; docker port course-internal-test
+echo "--- curl from the host:"; curl -s -m 4 -o /dev/null -w 'HTTP %{http_code}\n' localhost:5999 || echo "no answer (curl exit $?)"
 docker stop course-internal-test
 ```
 ```text
