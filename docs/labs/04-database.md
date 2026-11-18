@@ -631,3 +631,6 @@ curl -s -w ' [HTTP %{http_code}]\n' localhost:8081/whoami
 
 ## 5, 7–11. To be completed in step 14
 Verify, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 14). Troubleshooting above grows with each step.
+
+## Go deeper
+- Course: [Docker 08 - Volumes and bind mounts](../courses/docker/08-volumes-and-bind-mounts.md)

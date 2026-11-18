@@ -93,7 +93,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 05 | Tags, digests and registries | `05-tags-and-registries.md` | step 2 (Lab 01) | step 12 | - | Pinned `python:3.12-slim-...`, the no-`:latest` rule |
 | 06 | Environment variables, config and secrets | `06-config-and-secrets.md` | step 3 (Lab 01) | step 13 | - | Compose `environment:` and `.env` / `.env.example` |
 | 07 | Docker networks and service-name DNS | `07-networks.md` | step 3 (Lab 01) | step 14 | - | Compose default network (3), `api` resolving to every replica (4-5), `public`/`private` (8) |
-| 08 | Volumes and bind mounts | `08-volumes-and-bind-mounts.md` | step 10 (Lab 04) | step 11 | - | Postgres named volume; persistence test (14) |
+| 08 | Volumes and bind mounts | `08-volumes-and-bind-mounts.md` | step 10 (Lab 04) | step 11 | AWSLAB-86 | Postgres named volume; persistence test (14) |
 | 09 | Docker Compose | `09-compose.md` | step 3 (Lab 01) | step 15 | - | `docker-compose.yml`, `up`, `ps`, `deploy.replicas` |
 | 10 | Debugging: logs, exec, inspect | `10-debugging.md` | step 3 (Lab 01) | step 16 | - | `docker compose ps/logs` now; `exec` and `network inspect` later |
 
@@ -340,7 +340,8 @@ back and the plan updated.
 4. [x] First two modules written at the stop of step 8 (see the progress log).
 5. [x] Step 9 modules written (Networking 07 and Docker 02).
 6. [x] Step 10 modules written (AWS 04 and Docker 03).
-7. [ ] Next modules: see "Schedule by lab step" (step 11: Docker 04 and Docker 08).
+7. [x] Step 11 modules written (Docker 08 and Docker 04).
+8. [ ] Next modules: see "Schedule by lab step" (step 12: AWS 06 and Docker 05).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -353,5 +354,6 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
 | step 10 | Docker 03 - Dockerfile instructions | AWSLAB-85 | `5042d55` | PASS WITH NOTES (index/plan updates landed in `df8fde2`) |
 | step 10 | AWS 04 - VPC: subnets, route tables, gateways | AWSLAB-84 | `df8fde2` (message lacks ticket key) | PASS WITH NOTES |
-| step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | _(pending)_ | _(pending)_ |
+| step 11 | Docker 08 - Volumes and bind mounts | AWSLAB-86 | _(pending)_ | _(pending)_ |
+| step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | `fbae44a` | _(pending)_ |
 

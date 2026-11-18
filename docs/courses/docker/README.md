@@ -16,7 +16,7 @@ Back to the [course index](../README.md).
 | 05 | Tags, digests and registries | ⬜ planned | Lab 01, step 2 |
 | 06 | Environment variables, config and secrets | ⬜ planned | Lab 01, step 3 |
 | 07 | Docker networks and service-name DNS | ⬜ planned | Lab 01, step 3 |
-| 08 | Volumes and bind mounts | ⬜ planned | Lab 04, step 10 |
+| 08 | [Volumes and bind mounts](./08-volumes-and-bind-mounts.md) | ✅ written | Lab 04, step 10 |
 | 09 | Docker Compose | ⬜ planned | Lab 01, step 3 |
 | 10 | Debugging: logs, exec, inspect | ⬜ planned | Lab 01, step 3 |
 
