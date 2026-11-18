@@ -91,6 +91,24 @@ services:
       retries: 5
       start_period: 10s
 
+  # The "bastion host" for the database: off by default, started only with "--profile admin".
+  # Postgres itself never publishes a port (it sits on the internal "private" network, which cannot
+  # publish ports at all), so a tiny relay joins "public" (to publish) and "private" (to reach it).
+  db-proxy:
+    image: alpine/socat:1.8.1.3
+    profiles: ["admin"]
+    # Listen on 5432 and forward every connection to the database, by service name.
+    command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
+    ports:
+      # Your machine only (127.0.0.1), never the network. Change the port if 5432 is taken.
+      - "127.0.0.1:${ADMIN_DB_PORT:-5432}:5432"
+    networks:
+      - public
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 networks:
   # Like the public subnets of a VPC: has a route to the internet. Only the load balancer joins it.
   public:
