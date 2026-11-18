@@ -1,9 +1,9 @@
 # Lab 04 — Database (RDS)
 
 > **AWS equivalent:** Amazon RDS for PostgreSQL, DB subnet groups, security groups, snapshots  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10), `cc957ec` (step 11) and `d7ac631` (step 12) on `dev`
+> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10), `cc957ec` (step 11), `d7ac631` (step 12) and `bde01cf` (step 13) on `dev`
 
-> **Status:** in progress. Steps 10–12 are written; steps 13–14 (admin profile, tests) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 10–13 are written; step 14 (tests) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain why an application keeps its data in a **database** and not in its own files or memory.
@@ -11,6 +11,7 @@
 - Run PostgreSQL in a container: private network only, data in a **named volume**, password from `.env`, with a healthcheck.
 - Prove that the database is not reachable from your machine, and that its data outlives its container.
 - Describe a **migration** (a versioned change to the database structure), write one with **Alembic**, and run it as a one-shot job before the API starts.
+- Give yourself **admin access** to a private database safely: a side door that is off by default (a Compose **profile**), local-only and still password-protected.
 - Build a **CRUD** API (create, read, update, delete) that stores its data in the database, with validated input and one database session per request.
 - Explain what an **ORM** (SQLAlchemy) does: you describe tables as Python classes and the library writes the SQL.
 
@@ -69,6 +70,7 @@ In the console: **RDS → Databases**, plus **VPC → Security groups** for the 
 | Endpoint | DNS name of the instance | the service name `postgres` (Docker DNS resolves it on `private`) |
 | Master password | Secrets Manager | `POSTGRES_PASSWORD` in `.env` (gitignored) |
 | Connection string given to apps | endpoint + credentials injected into the task (env var or secret) | `DATABASE_URL`, built in `docker-compose.yml` from the `POSTGRES_*` variables |
+| Admin access to a private database | a bastion host, or Systems Manager Session Manager port forwarding, or a VPN; never a public database | the `db-proxy` service (socat), only with `--profile admin`, published on `127.0.0.1` |
 | Running migrations | a task or pipeline step before the deployment (ECS run-task, CI job, Lambda) | the one-shot `migrate` service: `alembic upgrade head`, then it exits |
 | Health | RDS status `Available` | Docker healthcheck with `pg_isready` |
 | Snapshots, Multi-AZ, patching | managed by AWS | not simulated (backups: course module [Databases 09](../courses/README.md)) |
@@ -79,6 +81,7 @@ flowchart LR
   you((You)) -->|127.0.0.1:80| lb
   subgraph public["public network"]
     lb["lb: Nginx"]
+    proxy["db-proxy (socat)<br/>profile admin only"]
   end
   subgraph private["private network (internal)"]
     api["api x3"]
@@ -92,6 +95,8 @@ flowchart LR
   mig -. "api starts after it succeeds" .-> api
   pg --- vol
   you -. "no route, no port" .-x pg
+  you -. "127.0.0.1:5432, only with --profile admin" .-> proxy
+  proxy -.-> pg
 ```
 
 ## 3. Prerequisites
@@ -814,11 +819,153 @@ somewhere to keep its state.
 - **Input is validated** at the edge (`422`) and **output is shaped** by `NoteOut`: clients only receive the fields you declared.
 - Nothing changed in the network: the database is still only reachable from the `private` network; clients only ever talk to the load balancer.
 
+### Step 13 — The admin profile: a door to the database, closed by default
+**Why:** the database is deliberately unreachable from your machine, which is right for the running system but awkward when *you* want to look inside it (run a query, open a GUI client).
+Real RDS has the same problem, and the answer is never "open the database to the internet": you go in through a controlled side door. This step adds that door, and keeps it **off** unless you ask for it.
+
+**The problem, shown.** The obvious fix, `ports:` on `postgres`, cannot work: the `private` network is `internal`, and Docker does not publish the ports of a container that is only on an internal network. A throw-away
+container proves it:
+```bash
+docker run --rm -d --name course-internal-test --network aws-local-lab_private -p 127.0.0.1:5999:80 nginx:1.30.6-alpine
+docker port course-internal-test
+curl -s -m 4 -o /dev/null -w 'HTTP %{http_code}\n' localhost:5999 || echo "no answer (curl exit $?)"
+docker stop course-internal-test
+```
+```text
+--- docker port:
+--- curl from the host:
+HTTP 000
+no answer (curl exit 7)
+```
+`-p 127.0.0.1:5999:80` was requested, but `docker port` prints **nothing** (no port was published) and `curl` cannot connect (exit code 7 = connection refused). So the door has to be a **relay**: a tiny container that sits on both
+networks, like the load balancer does. (`docker stop` removes the test container, which was started with `--rm`.)
+
+**Do it.** Add this service to `docker-compose.yml`, after `postgres`:
+
+```yaml
+  # The "bastion host" for the database: off by default, started only with "--profile admin".
+  # Postgres itself never publishes a port (it sits on the internal "private" network, which cannot
+  # publish ports at all), so a tiny relay joins "public" (to publish) and "private" (to reach it).
+  db-proxy:
+    image: alpine/socat:1.8.1.3
+    profiles: ["admin"]
+    # Listen on 5432 and forward every connection to the database, by service name.
+    command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
+    ports:
+      # Your machine only (127.0.0.1), never the network. Change the port if 5432 is taken.
+      - "127.0.0.1:${ADMIN_DB_PORT:-5432}:5432"
+    networks:
+      - public
+      - private
+    depends_on:
+      postgres:
+        condition: service_healthy
+```
+and one line group in `.env.example`:
+```bash
+# Admin access (Lab 04, step 13): host port of "docker compose --profile admin up -d db-proxy"
+ADMIN_DB_PORT=5432
+```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `image: alpine/socat:1.8.1.3` | `socat` ("socket cat") is a small program that copies bytes between two network connections. Pinned to an exact version. | `:latest` is forbidden here; another tool (Nginx `stream`, HAProxy) would do the same job with more configuration. |
+| `profiles: ["admin"]` | The service belongs to the **profile** `admin`: Compose ignores it unless you pass `--profile admin` (or name the service explicitly with that profile). | Remove it and `docker compose up` opens the database on every start. |
+| `command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]` | Two socat "addresses": listen on TCP 5432 (`fork` = handle each connection in its own process, `reuseaddr` = restart quickly) and connect each one to `postgres:5432`. | Without `fork`, only one client could connect at a time. |
+| `ports: "127.0.0.1:${ADMIN_DB_PORT:-5432}:5432"` | Publishes the relay on your machine **only** (`127.0.0.1`), on port 5432 unless `ADMIN_DB_PORT` says otherwise. | `"5432:5432"` would publish on all interfaces: anyone on your network could try the password. |
+| `networks: - public - private` | `public` lets Docker publish the port; `private` lets the relay reach `postgres` (same trick as the load balancer). | Only `private`: the port is not published (see above). Only `public`: it cannot find `postgres`. |
+| `depends_on: postgres: service_healthy` | Starts the relay only once the database accepts connections. | Without it, the first connection right after start may fail. |
+
+**Check 1 — off by default.** The service exists in the file but is not part of a normal run, and nothing listens on the host:
+```bash
+docker compose config -q && echo "compose config OK"
+docker compose config --services | sort | tr '\n' ' '
+docker compose --profile admin config --services | sort | tr '\n' ' '
+docker compose up -d                       # a normal start (add LB_HOST_PORT=8081 if port 80 is busy)
+docker compose ps -a --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+timeout 3 bash -c '</dev/tcp/127.0.0.1/5432' 2>/dev/null && echo OPEN || echo "closed (nothing listens on 127.0.0.1:5432)"
+```
+```text
+compose config OK
+api lb migrate postgres 
+api db-proxy lb migrate postgres 
+SERVICE    STATUS                    PORTS
+lb         Up 56 minutes (healthy)   127.0.0.1:8081->80/tcp
+postgres   Up 34 minutes (healthy)   5432/tcp
+closed (nothing listens on 127.0.0.1:5432)
+```
+(The `api` and `migrate` rows are left out of the `ps` output.) Without the profile the services are `api lb migrate postgres`; with `--profile admin`, `db-proxy` joins the list. The normal start does not create it, and port 5432 is closed.
+The last command opens a TCP connection with Bash's `/dev/tcp`; it fails.
+
+**Check 2 — switch the door on, and connect with `psql`.**
+```bash
+docker compose --profile admin up -d db-proxy
+docker compose --profile admin ps db-proxy --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
+timeout 3 bash -c '</dev/tcp/127.0.0.1/5432' 2>/dev/null && echo "OPEN (127.0.0.1:5432 accepts connections)" || echo closed
+```
+```text
+ Container aws-local-lab-postgres-1 Waiting 
+ Container aws-local-lab-postgres-1 Healthy 
+ Container aws-local-lab-db-proxy-1 Starting 
+ Container aws-local-lab-db-proxy-1 Started 
+SERVICE    STATUS                  PORTS
+db-proxy   Up Less than a second   127.0.0.1:5432->5432/tcp
+OPEN (127.0.0.1:5432 accepts connections)
+```
+`127.0.0.1:5432->5432/tcp` is the arrow that `postgres` never had: a published port, on your machine only. Now a real client. Your Windows machine probably has no `psql`, so use a throw-away client container that reaches your machine through
+`host.docker.internal` (Docker Desktop's name for "the host") and reads the password from `.env` **without printing it** (`--env-file`):
+```bash
+docker run --rm --env-file .env postgres:18.7-alpine3.24 sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" PGCONNECT_TIMEOUT=5 psql -h host.docker.internal -p 5432 -U "${POSTGRES_USER:-lab}" -d "${POSTGRES_DB:-lab}" -tA -c "select current_user, current_database(), inet_server_port();" -c "\dt"'
+```
+```text
+lab|lab|5432
+public|alembic_version|table|lab
+public|notes|table|lab
+```
+It connected through the relay: user `lab`, database `lab`, server port `5432`, and `\dt` lists the two tables of step 11. (`${POSTGRES_USER:-lab}` repeats Compose's defaults, because `.env` does not necessarily define those two variables; see Troubleshooting.)
+If you have `psql` or a GUI client (DBeaver, pgAdmin) on Windows, point it at host `127.0.0.1`, port `5432`, user and database `lab`, and your password.
+
+**Check 3 — the password still protects the door.**
+```bash
+docker run --rm -e PGCONNECT_TIMEOUT=5 postgres:18.7-alpine3.24 psql -h host.docker.internal -p 5432 -U lab -d lab -w -tA -c "select 1"
+```
+```text
+psql: error: connection to server at "host.docker.internal" (192.168.65.254), port 5432 failed: fe_sendauth: no password supplied
+```
+Reaching the port is not enough: without the password the server refuses (`-w` = never ask for one).
+
+**Check 4 — switch it off again, and make sure nothing else broke.**
+```bash
+docker compose --profile admin stop db-proxy
+timeout 3 bash -c '</dev/tcp/127.0.0.1/5432' 2>/dev/null && echo OPEN || echo "closed again"
+bash tests/03_network_isolation.sh
+bash tests/02_load_balancing.sh        # (with LB_HOST_PORT=8081 in front of each if port 80 is busy)
+```
+```text
+ Container aws-local-lab-db-proxy-1 Stopped 
+closed again
+  PASS  the API answers through the load balancer
+  PASS  the API container cannot reach the internet (the lb can)
+03_network_isolation: all checks passed
+  PASS  30 requests reached 3 different replicas (fewest: 10)
+  PASS  api has no published port
+02_load_balancing: all checks passed
+```
+(Test output trimmed to the last lines.) After `stop`, port 5432 is closed again. The existing tests still pass: with the proxy off, the stack is exactly as before. The stopped `db-proxy` container stays on disk, doing nothing, until you remove it.
+
+**What just happened:**
+- You added a **side door** with three safeguards: it only exists when you ask (`profile`), it only listens on your own machine (`127.0.0.1`), and the database password is still required.
+- `postgres` itself still has no `ports:` and still sits only on `private`: the isolation you built in [Lab 03](./03-networking.md) is unchanged. The door is a separate, disposable container.
+- In real AWS the same need is solved by a **bastion host** (a small server in a public subnet that you SSH into and hop from), or **AWS Systems Manager Session Manager** port forwarding, or a VPN: the database stays in a private subnet and its security group only
+  accepts connections from the bastion's security group. Never "make the database publicly accessible".
+- Remember to stop the proxy when you finish: an open port is an attack surface, even on `127.0.0.1`.
+
 ## 6. Troubleshooting (so far)
 | Symptom | Cause | Fix |
 |---|---|---|
 | `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified` | Docker Desktop is not running, so the Docker engine is not there. | Start Docker Desktop, wait until `docker info` prints a version, then retry. |
 | `Bind for 0.0.0.0:80 failed: port is already allocated` when `lb` starts | Another container (here `docker-nginx-1`, from a different Compose project) already publishes port 80 on your machine. Find it with `docker ps --format '{{.Names}}\t{{.Ports}}'`. | Stop the other project, or choose another port for the lab: `LB_HOST_PORT=8081` in `.env` (or on the command line for one run) and use `localhost:8081`. |
+| `psql: error: ... FATAL:  password authentication failed for user "root"` when connecting from a client container with `--env-file .env` | `.env` does not define `POSTGRES_USER` (Compose silently uses the default `lab`), so inside the client container the variable is empty and `psql` falls back to the container's user, `root`. | Pass the user explicitly, with the same default Compose uses: `-U "${POSTGRES_USER:-lab}" -d "${POSTGRES_DB:-lab}"`. |
 
 ## 5, 7–11. To be completed in step 14
 Verify, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 14). Troubleshooting above grows with each step.

@@ -10,12 +10,14 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Alembic** | The migration tool of the SQLAlchemy family: applies numbered migration scripts to a database and remembers which ones were applied (in the `alembic_version` table). | Local tool (AWS has no equivalent: you run it as a task or CI step) | 04 |
 | **Auto Scaling** | Adding or removing copies of an app automatically, based on load. | AWS: Auto Scaling groups · Local: Kubernetes HPA | 12 |
 | **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one. | AWS only — cannot be simulated on one laptop | 03 |
+| **Bastion host** | A small, hardened server you go through to reach machines that are not exposed to the internet (such as a database in a private subnet). AWS offers Systems Manager Session Manager as a bastion without open ports. | AWS: bastion EC2 / SSM Session Manager · Local: the `db-proxy` service | 04 |
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
 | **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: MinIO bucket | 06 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
 | **CloudWatch** | AWS monitoring: metrics, logs, dashboards, alarms. | Local: Prometheus + Grafana + Loki | 09 |
+| **Compose profile** | A label on a Compose service (`profiles: ["admin"]`) that keeps it switched off unless you ask for it with `--profile admin`. | Local: used for the optional `db-proxy` | 04 |
 | **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **CRUD** | Create, Read, Update, Delete: the four basic things you can do with stored records. In an HTTP API they map to `POST`, `GET`, `PUT`, `DELETE`. | Local: the `/notes` routes of the API | 04 |
