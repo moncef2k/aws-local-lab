@@ -31,7 +31,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [02](./02-load-balancing.md) | Load balancing and health checks | ALB, target groups | ✅ done |
 | [03](./03-networking.md) | Networking: public and private networks | VPC, subnets, security groups | ✅ done |
 | [04](./04-database.md) | Database, migrations, persistence | RDS | ✅ done |
-| 05 | Caching (cache-aside) | ElastiCache | ⬜ planned |
+| [05](./05-caching.md) | Caching (cache-aside) | ElastiCache | 🚧 in progress |
 | 06 | Object storage and presigned URLs | S3 | ⬜ planned |
 | 07 | Queues and workers | SQS, Lambda / ECS workers | ⬜ planned |
 | 08 | Static frontend and caching headers | S3 static hosting, CloudFront | ⬜ planned |

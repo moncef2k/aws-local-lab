@@ -13,6 +13,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Bastion host** | A small, hardened server you go through to reach machines that are not exposed to the internet (such as a database in a private subnet). AWS offers Systems Manager Session Manager as a bastion without open ports. | AWS: bastion EC2 / SSM Session Manager · Local: the `db-proxy` service | 04 |
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
 | **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: MinIO bucket | 06 |
+| **Cache hit / miss** | A **hit** means the answer was found in the cache; a **miss** means it was not, so the program asks the original source (the database) and usually stores the answer. | Local: Redis cache (Lab 05) | 05 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
@@ -30,6 +31,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
+| **Eviction (LRU)** | What a full cache does to make room: it deletes entries. **LRU** (least recently used) deletes the ones unused the longest. | AWS: ElastiCache parameter `maxmemory-policy` · Local: `--maxmemory-policy allkeys-lru` | 05 |
 | **Failover** | Continuing to serve requests, on the remaining copies, when one copy fails. | AWS: ALB + several targets · Local: Nginx `proxy_next_upstream` | 02 |
 | **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
@@ -77,5 +79,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
+| **tmpfs** | A folder kept in memory instead of on disk; its content disappears when the container stops. Used on Redis's `/data` so Docker does not create a hidden volume. | Local: Compose `tmpfs:` | 05 |
+| **TTL** (time to live) | How long a cached value stays valid before it expires by itself. | AWS/Redis: key expiry (`EX`, `TTL`) · Local: Redis | 05 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
 | **Volume** | Storage that outlives a container, so data survives a restart. | AWS: EBS · Local: Docker named volume | 04 |
