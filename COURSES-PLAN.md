@@ -197,7 +197,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 03 | Compute: EC2, ECS, Fargate and EKS | `03-compute.md` | step 2 (Lab 01) | step 33 | - | Lab 01: container vs VM, 'Going to real AWS'; EKS from step 40 |
 | 04 | VPC: subnets, route tables, gateways | `04-vpc.md` | step 8 (Lab 03) | step 10 | AWSLAB-84 | Public/private Docker networks |
 | 05 | ELB: ALB, target groups, health checks | `05-elb.md` | step 4 (Lab 02) | step 34 | - | Nginx stands in for the ALB |
-| 06 | RDS: managed databases | `06-rds.md` | step 10 (Lab 04) | step 12 | - | Postgres container stands in for RDS |
+| 06 | RDS: managed databases | `06-rds.md` | step 10 (Lab 04) | step 12 | AWSLAB-88 | Postgres container stands in for RDS |
 | 07 | ElastiCache | `07-elasticache.md` | step 15 (Lab 05) | step 25 | - | Redis container stands in for ElastiCache |
 | 08 | S3: buckets, objects, presigned URLs | `08-s3.md` | step 18 (Lab 06) | step 33 | - | MinIO, `POST /upload` |
 | 09 | CloudFront and CDNs | `09-cloudfront.md` | step 26 (Lab 08) | on request | - | Static frontend + caching headers (Lab 08) |
@@ -341,7 +341,8 @@ back and the plan updated.
 5. [x] Step 9 modules written (Networking 07 and Docker 02).
 6. [x] Step 10 modules written (AWS 04 and Docker 03).
 7. [x] Step 11 modules written (Docker 08 and Docker 04).
-8. [ ] Next modules: see "Schedule by lab step" (step 12: AWS 06 and Docker 05).
+8. [x] Step 12 modules written (AWS 06 and Docker 05).
+9. [ ] Next modules: see "Schedule by lab step" (step 13: Databases 01 and Docker 06).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -354,7 +355,8 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 9 | Docker 02 - Docker Desktop on Windows (WSL2) | AWSLAB-83 | `2a313d0` (+ fix `6118283`) | PASS WITH NOTES, notes fixed |
 | step 10 | Docker 03 - Dockerfile instructions | AWSLAB-85 | `5042d55` | PASS WITH NOTES (index/plan updates landed in `df8fde2`) |
 | step 10 | AWS 04 - VPC: subnets, route tables, gateways | AWSLAB-84 | `df8fde2` (message lacks ticket key) | PASS WITH NOTES |
-| step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | _(pending)_ | _(pending)_ |
+| step 12 | AWS 06 - RDS: managed databases | AWSLAB-88 | _(pending)_ | _(pending)_ |
+| step 12 | Docker 05 - Tags, digests and registries | AWSLAB-89 | `bf8046c` | _(pending)_ |
 | step 11 | Docker 08 - Volumes and bind mounts | AWSLAB-86 | `7e5e393` | PASS WITH NOTES, notes fixed |
 | step 11 | Docker 04 - Layers and the build cache | AWSLAB-87 | `fbae44a` | PASS WITH NOTES, notes fixed |
 

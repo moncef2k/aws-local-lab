@@ -15,7 +15,7 @@ and links to the official documentation.
 | 03 | Compute: EC2, ECS, Fargate and EKS | ⬜ planned | Docker, then k3d |
 | 04 | [VPC: subnets, route tables, gateways](./04-vpc.md) | ✅ written | `public` / `private` Docker networks (Lab 03) |
 | 05 | ELB: ALB, target groups, health checks | ⬜ planned | Nginx (Lab 02) |
-| 06 | RDS: managed databases | ⬜ planned | Postgres container (Lab 04) |
+| 06 | [RDS: managed databases](./06-rds.md) | ✅ written | Postgres container (Lab 04) |
 | 07 | ElastiCache | ⬜ planned | Redis container (Lab 05) |
 | 08 | S3: buckets, objects, presigned URLs | ⬜ planned | MinIO (Lab 06) |
 | 09 | CloudFront and CDNs | on request | Nginx caching headers (Lab 08) |

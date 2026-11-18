@@ -825,3 +825,4 @@ Verify, Going to real AWS, Clean up, Check your understanding, Exercises and Fur
 
 ## Go deeper
 - Course: [Docker 08 - Volumes and bind mounts](../courses/docker/08-volumes-and-bind-mounts.md)
+- Course: [AWS 06 - RDS: managed databases](../courses/aws/06-rds.md)
