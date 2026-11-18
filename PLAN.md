@@ -111,7 +111,7 @@ Nothing will be installed system-wide without asking you first.
   added to the isolation test. *Check:* `make test` green.
 
 ### Lab 05 — Caching (ElastiCache) · epic `AWSLAB-9`
-- [ ] **15. Redis container.** `AWSLAB-33` Pinned image, `private`, password, `maxmemory` + `allkeys-lru`. *Check:* `redis-cli ping` from inside.
+- [x] **15. Redis container.** `AWSLAB-33` Pinned image, `private`, password, `maxmemory` + `allkeys-lru`. *Check:* `redis-cli ping` from inside.
 - [ ] **16. Cache-aside on `GET /notes/{id}`.** `AWSLAB-34` TTL, invalidation on PUT/DELETE, `X-Cache: HIT|MISS` header + log line.
   *Check:* first read MISS, second HIT, after update MISS again.
 - [ ] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.

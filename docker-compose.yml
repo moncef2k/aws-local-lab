@@ -91,6 +91,34 @@ services:
       retries: 5
       start_period: 10s
 
+  # The cache (ElastiCache in AWS). Private network only and no "ports:": like the database, only
+  # containers on "private" can reach it. A cache holds copies that can be rebuilt, so there is no
+  # volume: if the container is re-created, the cache starts empty.
+  redis:
+    image: redis:8.10.3-alpine3.23
+    environment:
+      # No default on purpose (see POSTGRES_PASSWORD): a missing password stops "docker compose".
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}
+    # The shell reads the password from the environment, so it is not written in this file.
+    #   --maxmemory + allkeys-lru: never grow past 64 MB; when full, evict the least recently used key
+    #   --save "" + --appendonly no: no snapshot or log on disk (a cache is disposable)
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 64mb --maxmemory-policy allkeys-lru --save "" --appendonly no
+    # The image declares /data as a volume: an in-memory folder stops Docker from creating a hidden one.
+    tmpfs:
+      - /data
+    networks:
+      - private
+    healthcheck:
+      # redis-cli reads the password from REDISCLI_AUTH; $$ keeps the variable for the container's shell.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
   # The "bastion host" for the database: off by default, started only with "--profile admin".
   # Postgres itself never publishes a port (it sits on the internal "private" network, which cannot
   # publish ports at all), so a tiny relay joins "public" (to publish) and "private" (to reach it).
