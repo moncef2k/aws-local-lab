@@ -107,7 +107,7 @@ Nothing will be installed system-wide without asking you first.
 - [x] **12. Notes CRUD.** `AWSLAB-30` `POST/GET/PUT/DELETE /notes`. *Check:* curl the full create→read→update→delete cycle through the LB.
 - [x] **13. Admin profile.** `AWSLAB-31` `--profile admin` publishes Postgres on `127.0.0.1:5432` (via a small proxy), off by default.
   *Check:* without the profile `5432` is closed; with it `psql` connects.
-- [ ] **14. DB tests.** `AWSLAB-32` 🔀 `tests/04_persistence.sh` (`down && up` keeps data) and Postgres-not-reachable check
+- [x] **14. DB tests.** `AWSLAB-32` 🔀 `tests/04_persistence.sh` (`down && up` keeps data) and Postgres-not-reachable check
   added to the isolation test. *Check:* `make test` green.
 
 ### Lab 05 — Caching (ElastiCache) · epic `AWSLAB-9`

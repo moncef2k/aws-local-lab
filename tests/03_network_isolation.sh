@@ -71,5 +71,34 @@ else
   ok "the API container cannot reach the internet (the lb can)"
 fi
 
+# 6. The database (Lab 04): no published port, on the private network only, not reachable from
+#    the host, but reachable from an API replica (the control that proves "not reachable" means something).
+pg_id=$(docker compose ps -q postgres | head -1)
+if [ -z "$pg_id" ]; then
+  skip "the postgres service is not running"
+else
+  [ "$(docker compose port postgres 5432 2>/dev/null)" = ":0" ] && ok "postgres publishes no port" || bad "postgres publishes a port"
+  [ "$(nets_of "$pg_id" | xargs)" = "$private" ] && ok "postgres is on $private only" || bad "postgres is on another network than $private"
+  if [ -n "$(docker compose --profile admin ps --status running -q db-proxy 2>/dev/null)" ]; then
+    skip "the admin profile is on (db-proxy running): 127.0.0.1:5432 is open on purpose"
+  elif timeout 3 bash -c '</dev/tcp/127.0.0.1/5432' 2>/dev/null; then
+    bad "127.0.0.1:5432 accepts connections"
+  else
+    ok "127.0.0.1:5432 is closed"
+  fi
+  pg_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$private\").IPAddress}}" "$pg_id")
+  if timeout 3 bash -c "</dev/tcp/$pg_ip/5432" 2>/dev/null; then
+    bad "postgres answers from the host on its container address $pg_ip"
+  else
+    ok "the postgres container address ($pg_ip) is not reachable from the host"
+  fi
+  if docker compose exec -T --index 1 api python -c \
+    "import socket; socket.create_connection(('postgres', 5432), timeout=3)" >/dev/null 2>&1; then
+    ok "an API replica reaches postgres:5432 on the private network"
+  else
+    bad "an API replica cannot reach postgres:5432"
+  fi
+fi
+
 [ "$fail" = 0 ] && echo "03_network_isolation: all checks passed" || echo "03_network_isolation: FAILED"
 exit "$fail"
