@@ -1,15 +1,17 @@
 # Lab 04 — Database (RDS)
 
 > **AWS equivalent:** Amazon RDS for PostgreSQL, DB subnet groups, security groups, snapshots  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commit `b29c466` (step 10) on `dev`
+> **Builds on:** [Lab 03](./03-networking.md)  ·  **Reference solution:** commits `b29c466` (step 10) and `cc957ec` (step 11) on `dev`
 
-> **Status:** in progress. Step 10 is written; steps 11–14 (migrations, notes API, admin profile, tests) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 10–11 are written; steps 12–14 (notes API, admin profile, tests) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain why an application keeps its data in a **database** and not in its own files or memory.
 - Name the parts of an AWS RDS database (instance, engine, storage, subnet group, security group, endpoint) and their local counterparts.
 - Run PostgreSQL in a container: private network only, data in a **named volume**, password from `.env`, with a healthcheck.
 - Prove that the database is not reachable from your machine, and that its data outlives its container.
+- Describe a **migration** (a versioned change to the database structure), write one with **Alembic**, and run it as a one-shot job before the API starts.
+- Explain what an **ORM** (SQLAlchemy) does: you describe tables as Python classes and the library writes the SQL.
 
 ## 2. Theory
 
@@ -23,6 +25,12 @@ at once, and does not lose a folder when the lights go out. The application neve
 
 This lab uses a **relational** database, **PostgreSQL**: data lives in *tables* (rows and columns) that can be linked to each other, and you ask questions in the
 SQL language. The course module [Databases 01](../courses/README.md) explains the vocabulary from zero.
+
+A new database is empty: someone must create the tables. And later, when the application changes (a new column, a new table), every copy of the database must change
+in the **same order**. A **migration** is a small numbered script that makes one such change ("0001: create the `notes` table"); the database remembers which numbers it has
+already seen, so running the migrations twice is harmless. Think of the **numbered renovation orders** of a building: order 7 is only carried out once, after order 6.
+Writing the SQL by hand for every table is tedious, so the application uses an **ORM** (*object-relational mapper*, here **SQLAlchemy**): a Python class `Note` stands for the
+table `notes`, one object for one row, and the library produces the SQL. **Alembic** is the migration tool of the SQLAlchemy family.
 
 Two consequences shape the architecture:
 - The database is the one place that **must not lose data**, so it gets its own protected storage (a *volume*) and is never thrown away casually.
@@ -54,6 +62,8 @@ In the console: **RDS → Databases**, plus **VPC → Security groups** for the 
 | Who may connect | security group rule from the API's group | membership of `private`; later, the password |
 | Endpoint | DNS name of the instance | the service name `postgres` (Docker DNS resolves it on `private`) |
 | Master password | Secrets Manager | `POSTGRES_PASSWORD` in `.env` (gitignored) |
+| Connection string given to apps | endpoint + credentials injected into the task (env var or secret) | `DATABASE_URL`, built in `docker-compose.yml` from the `POSTGRES_*` variables |
+| Running migrations | a task or pipeline step before the deployment (ECS run-task, CI job, Lambda) | the one-shot `migrate` service: `alembic upgrade head`, then it exits |
 | Health | RDS status `Available` | Docker healthcheck with `pg_isready` |
 | Snapshots, Multi-AZ, patching | managed by AWS | not simulated (backups: course module [Databases 09](../courses/README.md)) |
 
@@ -66,11 +76,14 @@ flowchart LR
   end
   subgraph private["private network (internal)"]
     api["api x3"]
+    mig["migrate<br/>(one-shot job)"]
     pg[("postgres<br/>:5432")]
     vol[("volume pgdata")]
   end
   lb --> api
-  api -. "from step 11" .-> pg
+  api --> pg
+  mig -->|"alembic upgrade head"| pg
+  mig -. "api starts after it succeeds" .-> api
   pg --- vol
   you -. "no route, no port" .-x pg
 ```
@@ -250,5 +263,371 @@ troubleshooting entry once the fix lands. Re-run it.)
 - The data directory moved in version 18: the image keeps it in `/var/lib/postgresql/18/docker` and declares `/var/lib/postgresql` as its volume, so that is where the named volume is
   mounted (older tutorials mount `/var/lib/postgresql/data`; we did not test that path with 18).
 
-## 5–11. To be completed in step 14
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 14).
+### Step 11 — The database layer, the first migration and the `migrate` job
+**Why:** the database is running but empty, and the API cannot talk to it. This step gives the API a *database layer* (SQLAlchemy), creates the `notes` table with a
+versioned *migration* (Alembic), and makes that migration run automatically, once, before any API replica starts. (This step is larger than the usual one, about 8 files:
+it was kept in one piece on purpose; each file is small.)
+
+**Do it.**
+
+1. Pin the new libraries. `api/requirements.txt` becomes:
+   ```text
+   fastapi==0.163.0
+   uvicorn==0.54.0
+   sqlalchemy==2.1.9
+   psycopg[binary]==3.3.9
+   alembic==1.20.1
+   ```
+   `psycopg` is the driver that speaks the PostgreSQL protocol; `[binary]` ships it precompiled so the slim image needs no compiler.
+
+2. The database layer, `api/db.py` (new):
+   ```python
+   """Database layer: one engine (connection pool) and the table definitions.
+
+   The address of the database comes from the environment, never from the code,
+   like the endpoint of an RDS instance.
+   """
+   import os
+   from datetime import datetime
+
+   from sqlalchemy import DateTime, String, Text, create_engine, func
+   from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
+   DATABASE_URL = os.environ["DATABASE_URL"]
+
+   # pool_pre_ping tests a connection before using it, so a restarted database is not a problem.
+   engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+   SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+
+   class Base(DeclarativeBase):
+       pass
+
+
+   class Note(Base):
+       __tablename__ = "notes"
+
+       id: Mapped[int] = mapped_column(primary_key=True)
+       title: Mapped[str] = mapped_column(String(200))
+       body: Mapped[str] = mapped_column(Text, server_default="")
+       created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+   ```
+
+3. Alembic configuration, `api/alembic.ini` (new). The top part is ours; the logging sections are the standard Alembic ones so migrations print what they do:
+   ```ini
+   [alembic]
+   # Where the migration scripts live (relative to this file).
+   script_location = migrations
+   # Put /app on the import path so migrations/env.py can "import db".
+   prepend_sys_path = .
+   # No sqlalchemy.url here: env.py takes the address from DATABASE_URL, so no password in a file.
+
+   [loggers]
+   keys = root,sqlalchemy,alembic
+
+   [handlers]
+   keys = console
+
+   [formatters]
+   keys = generic
+
+   [logger_root]
+   level = WARNING
+   handlers = console
+   qualname =
+
+   [logger_sqlalchemy]
+   level = WARNING
+   handlers =
+   qualname = sqlalchemy.engine
+
+   [logger_alembic]
+   level = INFO
+   handlers =
+   qualname = alembic
+
+   [handler_console]
+   class = StreamHandler
+   args = (sys.stderr,)
+   level = NOTSET
+   formatter = generic
+
+   [formatter_generic]
+   format = %(levelname)-5.5s [%(name)s] %(message)s
+   datefmt = %H:%M:%S
+   ```
+
+4. How migrations connect, `api/migrations/env.py` (new):
+   ```python
+   """Alembic environment: how migrations connect to the database."""
+   from logging.config import fileConfig
+
+   from alembic import context
+
+   from db import Base, engine
+
+   config = context.config
+   if config.config_file_name is not None:
+       fileConfig(config.config_file_name)
+
+   # Used by "alembic revision --autogenerate" to compare the models with the real database.
+   target_metadata = Base.metadata
+
+
+   def run_migrations_online():
+       # Same engine as the API, so the same DATABASE_URL: one place to configure.
+       with engine.connect() as connection:
+           context.configure(connection=connection, target_metadata=target_metadata)
+           with context.begin_transaction():
+               context.run_migrations()
+
+
+   # Only "online" mode (a live database) is used in this lab.
+   run_migrations_online()
+   ```
+
+5. The template Alembic uses when you later run `alembic revision`, `api/migrations/script.py.mako` (new):
+   ```text
+   """${message}
+
+   Revision ID: ${up_revision}
+   Revises: ${down_revision | comma,n}
+   Create Date: ${create_date}
+   """
+   from alembic import op
+   import sqlalchemy as sa
+   ${imports if imports else ""}
+
+   revision = ${repr(up_revision)}
+   down_revision = ${repr(down_revision)}
+   branch_labels = ${repr(branch_labels)}
+   depends_on = ${repr(depends_on)}
+
+
+   def upgrade():
+       ${upgrades if upgrades else "pass"}
+
+
+   def downgrade():
+       ${downgrades if downgrades else "pass"}
+   ```
+
+6. The first migration, `api/migrations/versions/0001_create_notes.py` (new). It is written by hand so you can see exactly what it does:
+   ```python
+   """create notes table
+
+   Revision ID: 0001
+   Revises:
+   Create Date: 2026-11-18
+   """
+   from alembic import op
+   import sqlalchemy as sa
+
+   revision = "0001"
+   down_revision = None
+   branch_labels = None
+   depends_on = None
+
+
+   def upgrade():
+       op.create_table(
+           "notes",
+           sa.Column("id", sa.Integer(), primary_key=True),
+           sa.Column("title", sa.String(200), nullable=False),
+           sa.Column("body", sa.Text(), nullable=False, server_default=""),
+           sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+       )
+
+
+   def downgrade():
+       op.drop_table("notes")
+   ```
+
+7. Put the new files in the image. In `api/Dockerfile`, replace the line `COPY main.py .` with:
+   ```dockerfile
+   COPY main.py db.py alembic.ini ./
+   COPY migrations ./migrations
+   ```
+
+8. In `docker-compose.yml`: add the shared connection string at the top, give `api` the variable and a dependency, and add the `migrate` service.
+   ```yaml
+   name: aws-local-lab
+
+   # The address of the database, shared by the API and the migration job (like an RDS endpoint
+   # given to every app). "postgres" is the service name: Docker DNS turns it into the container's IP.
+   x-db-env: &db-env
+     DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-lab}
+
+   services:
+     api:
+       # ... build, image, deploy unchanged ...
+       environment:
+         <<: *db-env
+         # Uvicorn reads UVICORN_* variables, so the app is configured without changing the image.
+         UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+       depends_on:
+         # The API starts only after the migration finished successfully (the table exists).
+         migrate:
+           condition: service_completed_successfully
+       # ... networks and healthcheck unchanged ...
+
+     # One-shot job: same image as the API, runs "alembic upgrade head" and exits. It is the
+     # equivalent of a migration task run before a deployment (for example an ECS task or a CI step).
+     migrate:
+       build: ./api
+       image: aws-local-lab-api:0.1.0
+       command: ["alembic", "upgrade", "head"]
+       environment:
+         <<: *db-env
+       networks:
+         - private
+       depends_on:
+         postgres:
+           condition: service_healthy
+       restart: "no"
+   ```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `DATABASE_URL = os.environ["DATABASE_URL"]` | Reads the address of the database from the environment; a missing variable stops the program at once with a `KeyError`. | A hard-coded URL would put the password in the repository and tie the image to one environment. |
+| `create_engine(..., pool_pre_ping=True)` | The *engine* owns a **pool** of reusable connections (opening one is slow). `pool_pre_ping` tests a connection before handing it out. | Without it, after a database restart the first request fails on a dead connection. |
+| `class Note(Base)` with `__tablename__ = "notes"` | One Python class = one table; each `Mapped[...]` attribute = one column, with its type. | Rename the table here and `alembic check` reports a difference with the database. |
+| `server_default=...` | The **database** fills the value when the row is inserted without it (`''`, current time). | A Python-side `default=` would not appear in the table definition and rows inserted by other tools would get no value. |
+| `script_location = migrations` | Tells Alembic where the numbered scripts are. | A wrong path gives `Path doesn't exist`. |
+| no `sqlalchemy.url` in the `.ini` | `env.py` imports the engine from `db.py`, so the URL is configured in one place only. | A URL here would be a second place with a password. |
+| `target_metadata = Base.metadata` | The list of tables the models describe; used to *compare* models and database (`alembic check`, `--autogenerate`). | `None` still runs migrations but disables the comparison. |
+| `revision = "0001"` / `down_revision = None` | This script's id, and the id of the one before it (none: it is the first). Alembic follows this chain. | A broken chain gives "multiple heads" or "can't locate revision". |
+| `op.create_table("notes", ...)` / `op.drop_table` | `upgrade` applies the change, `downgrade` undoes it. | Without `downgrade` you cannot go back. |
+| `COPY main.py db.py alembic.ini ./` + `COPY migrations ./migrations` | Puts the new files in the image. | A missing file means the container fails at start (`No module named 'db'` or `No 'script_location'`). |
+| `x-db-env: &db-env` and `<<: *db-env` | A YAML **anchor**: define the variable once, reuse it in two services. `x-` keys are ignored by Compose. | Copying the line twice works too, but the two copies can drift apart. |
+| `${POSTGRES_PASSWORD:?...}` inside the URL | Same "stop if missing" rule as step 10. (A password with characters like `@` or `/` would have to be URL-encoded; the generated hex password has none.) | A default would put a password in the repository. |
+| `@postgres:5432` | Host `postgres` = the service name, resolved by Docker DNS on `private`. | Use `localhost` and the container looks for a database in itself. |
+| `migrate` service, `command: [...]` | Same image as the API, but runs `alembic upgrade head` ("bring the database to the latest version") instead of the web server. | Without `command` it would start a second web server. |
+| `restart: "no"` | A job runs once and stays stopped. | `always` would re-run it forever in a loop. |
+| `depends_on: postgres: service_healthy` | `migrate` waits until Postgres accepts connections. | Without it, `migrate` may start first and fail with "connection refused". |
+| `api: depends_on: migrate: service_completed_successfully` | The API replicas start only after `migrate` exited with code 0. If it fails, the API never starts. | Remove it and a replica can answer before the table exists. |
+
+**Check the file and build the image:**
+```bash
+docker compose config -q && echo "compose config OK"
+docker compose build api
+```
+```text
+compose config OK
+ Image aws-local-lab-api:0.1.0 Built
+```
+
+**Start the stack and read what `migrate` did:**
+```bash
+docker compose up -d
+docker compose ps -a --format 'table {{.Service}}\t{{.Status}}'
+docker compose logs migrate
+```
+```text
+ Container aws-local-lab-migrate-1 Exited
+ Container aws-local-lab-api-2 Starting
+ ...
+SERVICE    STATUS
+api        Up 6 seconds (healthy)
+api        Up 6 seconds (healthy)
+api        Up 6 seconds (healthy)
+migrate    Exited (0) 7 seconds ago
+postgres   Up 14 seconds (healthy)
+
+migrate-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+migrate-1  | INFO  [alembic.runtime.migration] Will assume transactional DDL.
+migrate-1  | INFO  [alembic.runtime.migration] Running upgrade  -> 0001, create notes table
+```
+(Trimmed.) Read the order: `migrate` shows `Exited`, **then** the API replicas start. `Exited (0)` is success for a job: the exit code 0 is what
+`service_completed_successfully` waits for. `Running upgrade  -> 0001` means "from nothing to version 0001".
+
+> In this run the `lb` container did not start: port 80 on the laptop was already taken by another project's container (see Troubleshooting). Here it was started on port 8081 for this run only with
+> `LB_HOST_PORT=8081 docker compose up -d`. If port 80 is free on your machine, plain `docker compose up -d` is all you need.
+
+**Check 1 — the step's check: the table and the version exist.**
+```bash
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt" -c "SELECT * FROM alembic_version;" -c "\d notes"'
+```
+```text
+              List of tables
+ Schema |      Name       | Type  | Owner 
+--------+-----------------+-------+-------
+ public | alembic_version | table | lab
+ public | notes           | table | lab
+(2 rows)
+
+ version_num 
+-------------
+ 0001
+(1 row)
+
+                                       Table "public.notes"
+   Column   |           Type           | Collation | Nullable |              Default              
+------------+--------------------------+-----------+----------+-----------------------------------
+ id         | integer                  |           | not null | nextval('notes_id_seq'::regclass)
+ title      | character varying(200)   |           | not null | 
+ body       | text                     |           | not null | ''::text
+ created_at | timestamp with time zone |           | not null | now()
+Indexes:
+    "notes_pkey" PRIMARY KEY, btree (id)
+```
+`\dt` lists the tables. Two exist: `notes` (ours) and `alembic_version`, a one-row table Alembic keeps to remember the last migration applied (`0001`). `\d notes` shows the structure: the
+`server_default`s appear as `Default` (`''` and `now()`), and `id` got an automatic counter (`nextval(...)`) from the primary key.
+
+**Check 2 — running the migration again changes nothing, and models match the database:**
+```bash
+docker compose run --rm migrate
+docker compose run --rm migrate alembic check
+```
+```text
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+...
+No new upgrade operations detected.
+```
+The first command prints no `Running upgrade` line: the database is already at `0001`, so there is nothing to do (that is why it can run on every start). `alembic check` compares the `Note` class
+with the real table and finds no difference. (One extra `INFO` line about the `notes_id_seq` sequence is omitted.)
+
+**Check 3 — an API replica reaches the database through the engine:**
+```bash
+docker compose exec -T --index 1 api python -c "
+import db
+from sqlalchemy import text
+print(db.engine.url.render_as_string(hide_password=True))
+with db.engine.connect() as c:
+    print(c.execute(text('select count(*) from notes')).scalar_one(), 'rows in notes')
+"
+```
+```text
+postgresql+psycopg://lab:***@postgres:5432/lab
+0 rows in notes
+```
+`render_as_string(hide_password=True)` prints the URL with the password hidden (`***`): never print the real one. The query went from the API container to `postgres` over the private network and
+the table is empty, as expected.
+
+**Check 4 — the API still answers through the load balancer:**
+```bash
+curl -s -w ' [HTTP %{http_code}]\n' localhost:8081/health
+curl -s -w ' [HTTP %{http_code}]\n' localhost:8081/whoami
+```
+```text
+{"status":"ok"} [HTTP 200]
+{"hostname":"60b538aa9142"} [HTTP 200]
+```
+(Port 8081 because of the conflict above; use `localhost` on port 80 if yours is free.)
+
+**What just happened:**
+- The API now has a **database layer**: one engine with a pool of connections, configured by one environment variable, `DATABASE_URL`. No route uses it yet; step 12 adds the notes endpoints.
+- The structure of the database is now **code in Git**, not something typed by hand. Anyone can rebuild an identical empty database by running the migrations.
+- Order is guaranteed by Compose: Postgres healthy → `migrate` runs and exits 0 → the three API replicas start → the load balancer starts. In AWS the same thing is a deployment pipeline
+  that runs a migration task before it switches traffic to the new version.
+- Because three replicas share one image, the migration is **not** run by the API itself: three replicas starting together would race to create the same table. One job, run once, avoids that.
+
+## 6. Troubleshooting (so far)
+| Symptom | Cause | Fix |
+|---|---|---|
+| `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine ... The system cannot find the file specified` | Docker Desktop is not running, so the Docker engine is not there. | Start Docker Desktop, wait until `docker info` prints a version, then retry. |
+| `Bind for 0.0.0.0:80 failed: port is already allocated` when `lb` starts | Another container (here `docker-nginx-1`, from a different Compose project) already publishes port 80 on your machine. Find it with `docker ps --format '{{.Names}}\t{{.Ports}}'`. | Stop the other project, or choose another port for the lab: `LB_HOST_PORT=8081` in `.env` (or on the command line for one run) and use `localhost:8081`. |
+
+## 5, 7–11. To be completed in step 14
+Verify, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 14). Troubleshooting above grows with each step.

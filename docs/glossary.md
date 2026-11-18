@@ -7,6 +7,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 |---|---|---|---|
 | **Active vs passive health check** | Active: the load balancer calls a health URL on a timer and removes failing servers before users notice (AWS ALB). Passive: it only notices a server is dead when a real request fails (open-source Nginx). | AWS: target group health check · Local: Nginx `max_fails` / `fail_timeout` | 02 |
 | **ALB** (Application Load Balancer) | Receives web traffic and spreads it over several copies of an app; stops sending traffic to broken ones. | AWS: ALB · Local: Nginx | 02 |
+| **Alembic** | The migration tool of the SQLAlchemy family: applies numbered migration scripts to a database and remembers which ones were applied (in the `alembic_version` table). | Local tool (AWS has no equivalent: you run it as a task or CI step) | 04 |
 | **Auto Scaling** | Adding or removing copies of an app automatically, based on load. | AWS: Auto Scaling groups · Local: Kubernetes HPA | 12 |
 | **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one. | AWS only — cannot be simulated on one laptop | 03 |
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
@@ -15,6 +16,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
 | **CloudWatch** | AWS monitoring: metrics, logs, dashboards, alarms. | Local: Prometheus + Grafana + Loki | 09 |
+| **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **Defence in depth** | Several layers of protection, so that getting through one (say, a bug in the API) does not give access to everything (say, the database). | AWS: public/private subnets + security groups · Local: `public` and `private` networks | 03 |
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
@@ -42,9 +44,12 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Load balancer** | See ALB. | | 02 |
 | **Make / Makefile** | A tool that runs named recipes (`make up`) defined in a `Makefile`. Used here as a shortcut for long Docker commands. | Local tool | 00 |
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
+| **Migration** | A small numbered script that changes the structure of a database (create a table, add a column). Applied in order, once each, so every copy of the database ends up the same. | Local: Alembic · AWS: run as a task or pipeline step before deployment | 04 |
 | **MinIO** | An S3-compatible object store you can run locally. | Local stand-in for S3 | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
+| **One-shot job** | A container that does one task and exits (code 0 = success) instead of running forever, like the `migrate` service. | AWS: ECS run-task, Kubernetes Job, CI step · Local: Compose service with `restart: "no"` | 04 |
+| **ORM** (object-relational mapper) | A library that maps tables to classes and rows to objects, and writes the SQL for you. | Local: SQLAlchemy | 04 |
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
@@ -60,6 +65,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **S3** | AWS object storage (files in buckets). | Local: MinIO | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |
+| **SQLAlchemy** | The Python library used for the database layer: engine (connection pool), ORM models, sessions. | Local library (works the same against RDS) | 04 |
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
 | **Subnet** | A slice of a bigger network range. Machines in the same subnet reach each other directly; what leaves it goes through a gateway. | AWS: VPC subnet (lives in one AZ) · Local: Docker network | 03 |
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
