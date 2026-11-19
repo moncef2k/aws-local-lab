@@ -14,6 +14,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
 | **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: MinIO bucket | 06 |
 | **Cache hit / miss** | A **hit** means the answer was found in the cache; a **miss** means it was not, so the program asks the original source (the database) and usually stores the answer. | Local: Redis cache (Lab 05) | 05 |
+| **Cache invalidation** | Removing or refreshing a cached copy because the original changed. In cache-aside the application deletes the cached copy right after it writes to the database. | Local: `forget()` in `api/main.py` | 05 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
@@ -75,6 +76,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Session (database)** | A short conversation with the database inside which changes are staged and then saved with `commit` (or dropped). The API opens one per request and closes it at the end. | Local: SQLAlchemy `Session` | 04 |
 | **SQLAlchemy** | The Python library used for the database layer: engine (connection pool), ORM models, sessions. | Local library (works the same against RDS) | 04 |
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
+| **Stale** | Out of date: a cached copy that no longer matches the original. A TTL limits how long data can stay stale. | Local: Redis cache with a 60 s TTL | 05 |
 | **Subnet** | A slice of a bigger network range. Machines in the same subnet reach each other directly; what leaves it goes through a gateway. | AWS: VPC subnet (lives in one AZ) · Local: Docker network | 03 |
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |

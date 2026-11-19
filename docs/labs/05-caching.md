@@ -1,15 +1,16 @@
 # Lab 05 — Caching (ElastiCache)
 
 > **AWS equivalent:** Amazon ElastiCache (Redis OSS / Valkey), subnet groups, security groups  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 04](./04-database.md)  ·  **Reference solution:** commit `b382737` (step 15) on `dev`
+> **Builds on:** [Lab 04](./04-database.md)  ·  **Reference solution:** commits `b382737` (step 15) and `c50f45d` (step 16) on `dev`
 
-> **Status:** in progress. Step 15 is written; steps 16–17 (cache-aside on `GET /notes/{id}`, the cache test) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 15–16 are written; step 17 (the cache test) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain what a **cache** is, what a **hit** and a **miss** are, and why a cache is allowed to forget.
 - Name the parts of an AWS ElastiCache setup (cluster, node, subnet group, security group, endpoint, auth) and their local counterparts.
 - Run **Redis** in a container: private network only, password from `.env`, a memory limit with the `allkeys-lru` eviction policy, and no persistence.
 - Prove with commands that the cache needs the password, is unreachable from your machine, and **evicts old keys** instead of running out of memory.
+- Implement the **cache-aside** pattern: a TTL on every copy, invalidation when a note changes, an `X-Cache` header to see what happened, and a cache that is allowed to fail without taking the API down.
 
 ## 2. Theory
 
@@ -24,6 +25,9 @@ A cache comes with three rules you must accept:
 - **It can be wrong.** The copy may be older than the original. That is why every cached value gets a **TTL** (*time to live*: it expires after a while) and why the application removes (*invalidates*) it when the original changes. This is the hardest part and is the subject of step 16.
 - **It is small.** Fast memory is limited, so when it is full the cache must **evict** something. A common rule is **LRU** (*least recently used*): throw away what has been unused the longest.
 - **It may disappear.** The cache is only an accelerator. If it is emptied, the system must still work, just slower. So it never holds the only copy of anything important.
+
+The most common way to use a cache is **cache-aside** (also called *lazy loading*), where the application itself manages the copies. To **read**: ask the cache; if the answer is there (a hit) return it; if not (a miss) ask the database, store the answer in the cache with a TTL, and return it. To **write**: change the database first, then **delete** the cached copy (rather than updating it), so the next read fetches and stores the fresh version.
+Between a change and the next refill a copy can be out of date, so the TTL sets the longest time anything can stay wrong.
 
 **Redis** is the program used here: an **in-memory key-value store**. You store a value under a name (a *key*: `note:7`) and fetch it back by that name, in a fraction of a millisecond because everything lives in RAM. It can also be configured with a memory limit and an eviction rule, which is exactly what a cache needs.
 
@@ -52,6 +56,8 @@ In the console: **ElastiCache → Redis OSS caches** (or *Valkey*), plus **VPC �
 | Who may connect | security group rule from the API's group | membership of `private`, plus the password |
 | Endpoint | DNS name of the cluster | the service name `redis` (Docker DNS, see [Docker 07](../courses/docker/07-networks.md)) |
 | Authentication | AUTH token | `REDIS_PASSWORD` in `.env` (gitignored) |
+| Cache logic | application code that talks to the cluster endpoint | `read_note` in `api/main.py` (cache-aside) |
+| How long a copy may be stale | TTL on each key | `CACHE_TTL_SECONDS` (60) |
 | Health | cluster status `available` | Docker healthcheck with `redis-cli ping` |
 | Replicas, Multi-AZ failover, backups, TLS | managed by AWS | not simulated |
 
@@ -69,7 +75,7 @@ flowchart LR
   end
   lb --> api
   api --> pg
-  api -. "from step 16" .-> redis
+  api -->|"cache-aside (step 16)"| redis
   you -. "no route, no port: blocked" .-> redis
 ```
 
@@ -249,6 +255,278 @@ bash tests/03_network_isolation.sh
 - Redis is **configured as a cache, not as a database**: it may forget (eviction), it keeps nothing on disk, and re-creating the container empties it. That is the right behaviour for copies of data that live safely in Postgres.
 - The password is a second **secret** in `.env`. Like Postgres's, it has no default, so a forgotten setting stops Compose instead of starting an unprotected cache.
 - The password is read by the shell inside the container, so it is not written in `docker-compose.yml`. It is still visible to anyone who can run `docker inspect` on the machine (see [Docker 06](../courses/docker/06-config-and-secrets.md)); that is acceptable for local fake credentials.
+
+### Step 16 — Cache-aside on `GET /notes/{id}`
+**Why:** Redis is running but nothing uses it. This step teaches the API to keep a copy of each note it reads, so the second, third, hundredth read of the same note is answered from memory without asking Postgres, and to **throw the copy away when the note changes**.
+
+**Do it.** Three changes.
+
+1. Pin the Redis client library, `api/requirements.txt` (one new line at the end):
+   ```text
+   redis==8.1.0
+   ```
+
+2. Give the API the cache's address and wait for the cache, in `docker-compose.yml` (the `api` service; only the new lines are marked):
+   ```yaml
+     api:
+       # ... build, image, deploy unchanged ...
+       environment:
+         <<: *db-env
+         UVICORN_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+         # The cache address (like an ElastiCache endpoint) and how long a cached note stays valid.   # new
+         REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0   # new
+         CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}                                                   # new
+       depends_on:
+         migrate:
+           condition: service_completed_successfully
+         # ... and once the cache answers (the API still works without it, see api/main.py).          # new
+         redis:                                                                                         # new
+           condition: service_healthy                                                                   # new
+       # ... networks and healthcheck unchanged ...
+   ```
+   `CACHE_TTL_SECONDS` is optional (60 if unset); to change it, add `CACHE_TTL_SECONDS=...` to your `.env`.
+
+3. The cache logic in `api/main.py`. At the top, the new imports and the cache client (the rest of the imports are unchanged):
+   ```python
+   import logging
+   import os
+   import socket
+   from datetime import datetime
+   from typing import Annotated, Iterator
+
+   import redis
+   from fastapi import Depends, FastAPI, HTTPException, Response, status
+   # ... pydantic, sqlalchemy and db imports unchanged ...
+
+   app = FastAPI(title="aws-local-lab API")
+
+   # Uvicorn's logger: it is already set up, so our lines show in "docker compose logs api".
+   log = logging.getLogger("uvicorn.error")
+
+   # The cache. Short timeouts: a slow or dead cache must not make the API slow too.
+   cache = redis.Redis.from_url(
+       os.environ["REDIS_URL"], decode_responses=True, socket_connect_timeout=1, socket_timeout=1
+   )
+   CACHE_TTL = int(os.environ.get("CACHE_TTL_SECONDS", "60"))
+   ```
+   Then replace the `GET`, `PUT` and `DELETE` of one note (the list and `POST` routes are unchanged):
+   ```python
+   def forget(note_id: int) -> None:
+       """Remove a note from the cache (the original changed). A dead cache must not break a write."""
+       try:
+           cache.delete(f"note:{note_id}")
+       except redis.RedisError as exc:
+           log.warning("cache DELETE failed for note:%s (%s)", note_id, exc)
+
+
+   @app.get("/notes/{note_id}", response_model=NoteOut)
+   def read_note(note_id: int, db: DbSession):
+       """Cache-aside: look in the cache first; on a miss read the database and keep a copy."""
+       key = f"note:{note_id}"
+       state = "MISS"
+       try:
+           cached = cache.get(key)
+           if cached is not None:
+               log.info("cache HIT  %s", key)
+               return Response(content=cached, media_type="application/json", headers={"X-Cache": "HIT"})
+       except redis.RedisError as exc:
+           state = "BYPASS"  # the cache is down: answer from the database, never fail because of it
+           log.warning("cache unavailable (%s): reading %s from the database", exc, key)
+       body = NoteOut.model_validate(get_note_or_404(db, note_id)).model_dump_json()
+       if state == "MISS":
+           log.info("cache MISS %s (stored for %ss)", key, CACHE_TTL)
+           try:
+               cache.set(key, body, ex=CACHE_TTL)
+           except redis.RedisError as exc:
+               log.warning("cache SET failed for %s (%s)", key, exc)
+       return Response(content=body, media_type="application/json", headers={"X-Cache": state})
+
+
+   @app.put("/notes/{note_id}", response_model=NoteOut)
+   def update_note(note_id: int, data: NoteIn, db: DbSession):
+       note = get_note_or_404(db, note_id)
+       note.title = data.title
+       note.body = data.body
+       db.commit()
+       forget(note_id)  # the cached copy is now wrong: drop it, the next read refills it
+       return note
+
+
+   @app.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+   def delete_note(note_id: int, db: DbSession):
+       db.delete(get_note_or_404(db, note_id))
+       db.commit()
+       forget(note_id)
+       return Response(status_code=status.HTTP_204_NO_CONTENT)
+   ```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `redis==8.1.0` | The Python client for Redis, pinned. | Unpinned, a new version could change behaviour between two builds. |
+| `REDIS_URL: redis://:PASSWORD@redis:6379/0` | One address with everything needed: scheme, password (the empty user before `:`), host `redis` (Docker DNS), port, database number `0`. `${REDIS_PASSWORD:?...}` stops Compose if the password is missing. | A wrong host or password makes every cache call fail (the API still answers, see `BYPASS`). |
+| `CACHE_TTL_SECONDS: ${...:-60}` | How long a copy stays valid, 60 s unless you set it. | A long TTL means longer staleness; a short one means more misses. |
+| `depends_on: redis: service_healthy` | The API starts once Redis answers `PONG`. | Without it the first requests after a cold start would run without a cache. |
+| `redis.Redis.from_url(..., socket_connect_timeout=1, socket_timeout=1)` | The client. `decode_responses=True` returns text instead of bytes. The 1-second timeouts mean a dead cache costs at most about a second, not a minute. | Without timeouts, an unreachable Redis could hang every request. |
+| `log = logging.getLogger("uvicorn.error")` | Reuses Uvicorn's logger, already configured, so `log.info` lines appear in `docker compose logs api`. | A new logger would print nothing unless you configure logging. |
+| `key = f"note:{note_id}"` | The cache key: one per note, named by kind and id. | A key without a prefix could clash with other data later. |
+| `cache.get(key)` → `HIT` | If the key exists, return the stored JSON **as is**, with `X-Cache: HIT`. The database is not touched. | Always querying the database is what the cache is meant to avoid. |
+| `except redis.RedisError` → `state = "BYPASS"` | If Redis is unreachable, read from the database and mark the answer `BYPASS`. The cache must be **optional**: it speeds things up, it must never take the API down. | Without it, a stopped Redis would turn every read into a `500`. |
+| `NoteOut.model_validate(...).model_dump_json()` | Read the row (`404` if missing) and turn it into the same JSON the API always returns. | A missing note is **not** cached: only found notes are stored. |
+| `cache.set(key, body, ex=CACHE_TTL)` | On a miss, store the JSON with an **expiry** (`ex` = seconds). | Without `ex` the copy would live until evicted, and could be wrong for ever. |
+| `forget(note_id)` after `commit()` in `PUT` and `DELETE` | Delete the cached copy **after** the database change is saved. The next read is a miss and stores the fresh version. | Without it a read right after an update returns the **old** note until the TTL ends. |
+| `return Response(..., headers={"X-Cache": state})` | The header the lab uses to *see* what happened: `HIT`, `MISS` or `BYPASS`. | Without it you would have to guess from timings or logs. |
+
+**Rebuild and restart:**
+```bash
+docker compose up -d --build           # add LB_HOST_PORT=8081 in front if port 80 is busy
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+```
+```text
+SERVICE    STATUS
+api        Up 16 seconds (healthy)
+api        Up 16 seconds (healthy)
+api        Up 15 seconds (healthy)
+lb         Up 30 minutes (healthy)
+postgres   Up 31 minutes (healthy)
+redis      Up 3 minutes (healthy)
+```
+(`migrate` is not listed: it ran and exited.)
+
+**Check — the step's check: first read MISS, second HIT, after an update MISS again.**
+```bash
+B=localhost:8081
+ID=$(curl -s -X POST $B/notes -H 'Content-Type: application/json' -d '{"title":"cache me","body":"first version"}' | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+G() { curl -s -D - $B/notes/$ID | tr -d '\r' | grep -i -E '^(HTTP|x-cache)|^\{' ; }     # print the status line, X-Cache and the body
+G; G; G
+curl -s -o /dev/null -w 'PUT [HTTP %{http_code}]\n' -X PUT $B/notes/$ID -H 'Content-Type: application/json' -d '{"title":"cache me (edited)","body":"second version"}'
+G; G
+```
+```text
+--- read 1
+HTTP/1.1 200 OK
+x-cache: MISS
+{"title":"cache me","body":"first version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+--- read 2
+HTTP/1.1 200 OK
+x-cache: HIT
+{"title":"cache me","body":"first version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+--- read 3
+HTTP/1.1 200 OK
+x-cache: HIT
+{"title":"cache me","body":"first version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+--- update, then read
+PUT [HTTP 200]
+HTTP/1.1 200 OK
+x-cache: MISS
+{"title":"cache me (edited)","body":"second version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+--- read again
+HTTP/1.1 200 OK
+x-cache: HIT
+{"title":"cache me (edited)","body":"second version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+```
+(The `--- read ...` labels were added with `echo` between the calls; the header name is printed in lower case, `x-cache`; HTTP header names are case-insensitive, so `X-Cache` and `x-cache` are the same header.) Read it as a story: **MISS** (nothing cached, the database was asked and a copy stored), **HIT** twice (answered from Redis), then the **update**
+dropped the copy, so the next read is a **MISS** that returns the **new** text (`cache me (edited)`), and the one after is a **HIT** again with the new text. The cache never served the old version after the update.
+
+**Check — the log lines, and the key itself:**
+```bash
+docker compose logs api | grep -E "cache (HIT|MISS)"
+docker compose exec -T redis sh -c "export REDISCLI_AUTH=\"\$REDIS_PASSWORD\"; redis-cli keys 'note:*'; redis-cli get note:$ID; redis-cli ttl note:$ID"
+```
+```text
+api-1 | INFO:     cache HIT  note:6
+api-3 | INFO:     cache HIT  note:6
+api-3 | INFO:     cache MISS note:6 (stored for 60s)
+api-1 | INFO:     cache HIT  note:6
+api-2 | INFO:     cache MISS note:6 (stored for 60s)
+note:6
+{"title":"cache me (edited)","body":"second version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+52
+```
+(`docker compose logs` groups lines per container, so they are not in time order.) The lines come from **three different replicas** (`api-1`, `api-2`, `api-3`) and yet a read on one replica is a `HIT` for a copy stored by another: the cache is **shared**, because it lives in Redis, not in the API's memory.
+That is the point of a separate cache service. The key `note:6` holds the JSON, and `ttl` shows **52 seconds left** of its 60.
+
+**What if…? Experiment A — the database changes behind the API's back:**
+```bash
+docker compose exec -T postgres sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tA -c \"update notes set title = 'changed in SQL' where id = $ID returning title;\""
+G                                                          # read: what does the cache say?
+docker compose exec -T redis sh -c "export REDISCLI_AUTH=\"\$REDIS_PASSWORD\"; redis-cli del note:$ID"; G
+```
+```text
+changed in SQL
+UPDATE 1
+HTTP/1.1 200 OK
+x-cache: HIT
+{"title":"cache me (edited)","body":"second version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+1
+HTTP/1.1 200 OK
+x-cache: MISS
+{"title":"changed in SQL","body":"second version","id":6,"created_at":"2026-11-18T23:56:53.276168Z"}
+```
+The title was changed **in the database** with `psql`, not through the API, so nobody told the cache. The read is a `HIT` and returns the **old** title: that is a **stale** value, the price of a cache. It would correct itself when the TTL runs out (at most 60 s later); `redis-cli del` (it printed `1`, one key deleted) forces it, and the next read is a
+`MISS` with the new title. Lesson: **invalidate on every write that goes through the application**, and keep a **TTL** as the safety net for everything else.
+
+**Experiment B — `DELETE` removes the copy too:**
+```bash
+curl -s -o /dev/null -w 'DELETE [HTTP %{http_code}]\n' -X DELETE $B/notes/$ID
+docker compose exec -T redis sh -c "export REDISCLI_AUTH=\"\$REDIS_PASSWORD\"; redis-cli exists note:$ID"
+G
+```
+```text
+DELETE [HTTP 204]
+0
+HTTP/1.1 404 Not Found
+{"detail":"note not found"}
+```
+After the delete, `exists` prints `0` (the key is gone) and reading the note gives `404`. Without `forget()` in `delete_note`, a deleted note would keep being served from the cache for up to a minute.
+
+**Experiment C — Redis goes away, the API keeps working:**
+```bash
+docker compose stop redis
+G; G                                                     # two reads while the cache is down
+curl -s -o /dev/null -w 'PUT [HTTP %{http_code}]\n' -X PUT $B/notes/$ID -H 'Content-Type: application/json' -d '{"title":"edited while redis was down","body":"y"}'
+docker compose start redis
+G; G                                                     # two reads after it is back
+docker compose logs api | grep -E "unavailable|DELETE failed"
+```
+```text
+--- redis up:
+HTTP/1.1 200 OK x-cache: MISS
+HTTP/1.1 200 OK x-cache: HIT
+--- redis STOPPED:
+HTTP/1.1 200 OK x-cache: BYPASS
+HTTP/1.1 200 OK x-cache: BYPASS
+--- a write while the cache is down:
+PUT [HTTP 200]
+--- redis back (it restarted empty):
+HTTP/1.1 200 OK x-cache: MISS
+HTTP/1.1 200 OK x-cache: HIT
+      1 WARNING:  cache DELETE failed for note:7 (Error -3 connecting to redis:6379. Temporary failure in name resolution.)
+      2 WARNING:  cache unavailable (Error -3 connecting to redis:6379. Temporary failure in name resolution.): reading note:7 from the database
+```
+(Here the note had id 7; this run used a variant of `G` that prints status and header on one line, and `echo` labels were added; the "redis up" reads, `MISS` then `HIT`, were part of the same run. The warnings are the lines the API logged, counted with `sort | uniq -c`.) With Redis stopped, reads still returned `200`, marked **`BYPASS`** (answered from the database), and the `PUT` still succeeded: the cache is an accelerator, not a dependency. When Redis came back it
+was **empty** (nothing is written to disk, step 15), so the first read was a `MISS` and the second a `HIT`. One caveat: if Redis were only *unreachable* for a moment but kept its data, a `PUT` during that time could not delete the cached copy, which would stay stale until its TTL ended. That is exactly what the TTL is for.
+
+**Regression check — the whole suite:**
+```bash
+make test                                 # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+```
+(Trimmed to the summary lines; `make` exited with code 0.)
+
+**What just happened:**
+- You implemented **cache-aside** (also called *lazy loading*): the application itself decides when to use the cache. **Read:** ask the cache; on a *miss* ask the database, store the answer with a TTL, and return it. **Write:** change the database first, then **delete** the cached copy (invalidate rather than update it: simpler, and the next read refills it correctly).
+- Three safety nets keep the cache honest: an **expiry** on every copy, **invalidation** on writes made through the API, and the fact that the cache is **optional** (`BYPASS`).
+- Only `GET /notes/{id}` is cached. The list (`GET /notes`) is not: it changes with every create and delete, which would make invalidation much harder. Choosing *what* to cache is part of the design.
+- The header `X-Cache` and the log lines make the cache **observable**. In step 17 the test reads them to prove the behaviour; the same idea in production is the *cache hit ratio* metric in CloudWatch.
 
 ## 5–11. To be completed in step 17
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 17).
