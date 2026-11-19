@@ -1,9 +1,9 @@
 # Lab 06 — Object storage (S3)
 
 > **AWS equivalent:** Amazon S3 (buckets, objects, access keys, presigned URLs)  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commit `0cc9b19` (step 18) on `dev`
+> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commits `0cc9b19` (step 18) and `b2872f7` (step 19) on `dev`
 
-> **Status:** in progress. Step 18 is written. Steps 19–21 (upload route, presigned URLs, public S3 endpoint, storage test) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 18–19 are written. Steps 20–21 (public S3 endpoint, storage test) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain what **object storage** is, and how it differs from a disk and from a database.
@@ -265,6 +265,252 @@ make test                                  # add LB_HOST_PORT=8081 in front if p
 - You used the **real AWS CLI** against a local server. Only `--endpoint-url` differs from what you would type against AWS, which is why the same boto3 code will work in step 19.
 - The store is a stand-in, not S3: it has no regions, replication or IAM policies, and a single container with a single volume is a single point of failure.
 
+### Step 19 — `POST /upload` and the presigned URL
+**Why:** the bucket exists, but nothing uses it. This step teaches the API to accept a file, store it in the bucket with the S3 SDK (**boto3**, the same library you would use against real AWS) and answer with the object's **key** and a **presigned URL**: a temporary download link that works without credentials.
+
+**What is a presigned URL?** The bucket is private, so downloading an object needs the secret key. But you do not want to hand the secret to a browser. Instead the API **signs** a URL: it computes a signature from the secret key, the object, the expiry time and the address, and puts it in the URL's query string. Whoever holds that URL can download **that one object** until it expires; the secret never leaves the API, and changing any part of the URL breaks the signature.
+
+**Do it.** Four small changes.
+
+1. Two new libraries, `api/requirements.txt` (the second is what FastAPI needs to read file uploads, which arrive as `multipart/form-data`):
+   ```text
+   boto3==1.44.6
+   python-multipart==0.0.34
+   ```
+
+2. Give the API the endpoint, the bucket and the keys, and make it wait for the bucket, in `docker-compose.yml` (`api` service; only the new lines are shown):
+   ```yaml
+     api:
+       environment:
+         # ... existing variables unchanged ...
+         # The object store (like an S3 endpoint plus an IAM user) and the bucket the API writes to.
+         S3_ENDPOINT_URL: http://s3:8333
+         S3_BUCKET: ${S3_BUCKET:-uploads}
+         S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+         S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
+       depends_on:
+         # ... migrate and redis unchanged ...
+         # ... and once the bucket exists.
+         s3-init:
+           condition: service_completed_successfully
+   ```
+
+3. The upload route in `api/main.py`. New imports at the top (merge with the existing ones):
+   ```python
+   import re
+   from uuid import uuid4
+
+   import boto3
+   from botocore.config import Config
+   from botocore.exceptions import BotoCoreError, ClientError
+   from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+   ```
+   The S3 client, after the `CACHE_TTL = ...` line:
+   ```python
+   # Object storage (S3 in AWS). Same boto3 code as against real AWS: only the endpoint differs.
+   # "path" addressing = http://s3:8333/<bucket>/<key>; real S3 uses <bucket>.s3.amazonaws.com, which a
+   # container name cannot imitate.
+   S3_BUCKET = os.environ["S3_BUCKET"]
+   s3 = boto3.client(
+       "s3",
+       endpoint_url=os.environ["S3_ENDPOINT_URL"],
+       aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+       aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+       region_name="us-east-1",
+       config=Config(
+           signature_version="s3v4",
+           s3={"addressing_style": "path"},
+           connect_timeout=2,
+           read_timeout=5,
+           retries={"max_attempts": 1},
+       ),
+   )
+   MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+   PRESIGN_SECONDS = int(os.environ.get("PRESIGN_SECONDS", "300"))
+   ```
+   The answer model, before `get_note_or_404`:
+   ```python
+   class UploadOut(BaseModel):
+       key: str
+       size: int
+       content_type: str
+       url: str  # a presigned GET link: valid for expires_in seconds, no credentials needed
+       expires_in: int
+   ```
+   And the route, at the end of the file:
+   ```python
+   @app.post("/upload", response_model=UploadOut, status_code=status.HTTP_201_CREATED)
+   def upload(file: Annotated[UploadFile, File()]):
+       """Store the file in the bucket and answer with its key and a temporary download link."""
+       data = file.file.read(MAX_UPLOAD_BYTES + 1)
+       if len(data) > MAX_UPLOAD_BYTES:
+           raise HTTPException(status_code=413, detail=f"file too large (max {MAX_UPLOAD_BYTES} bytes)")
+       # The client's file name is untrusted: keep letters, digits, dot, dash, underscore only.
+       name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(file.filename or "file"))[:100]
+       key = f"originals/{uuid4().hex}-{name}"  # the uuid makes the key unique: no overwriting
+       content_type = file.content_type or "application/octet-stream"
+       try:
+           s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data, ContentType=content_type)
+           url = s3.generate_presigned_url(
+               "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=PRESIGN_SECONDS
+           )
+       except (BotoCoreError, ClientError) as exc:
+           log.error("storage error on %s: %s", key, exc)
+           raise HTTPException(status_code=502, detail="object storage unavailable")
+       log.info("uploaded %s (%s bytes)", key, len(data))
+       return UploadOut(key=key, size=len(data), content_type=content_type, url=url, expires_in=PRESIGN_SECONDS)
+   ```
+
+4. Let the load balancer pass bigger bodies, in `lb/nginx.conf` (inside `server { ... }`, after `listen 80;`). Why is explained in Check 5 below:
+   ```nginx
+           # Nginx refuses request bodies over 1 MB by default (413). The API accepts uploads up to
+           # 5 MB (MAX_UPLOAD_BYTES in api/main.py); a little more here for the multipart overhead.
+           client_max_body_size 6m;
+   ```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `boto3==1.44.6` / `python-multipart==0.0.34` | The AWS SDK for Python, and the parser FastAPI uses for `multipart/form-data` bodies. Pinned. | Without `python-multipart`, FastAPI refuses to start a route that takes a file. |
+| `S3_ENDPOINT_URL: http://s3:8333` | The address of the S3 API: the service name `s3` (Docker DNS, see [Networking 02](../courses/networking/02-dns.md)). | Remove it and boto3 talks to the real `amazonaws.com` with fake keys. |
+| `depends_on: s3-init: service_completed_successfully` | The API starts after the bucket job exited with code 0. | Without it a very early upload could find no bucket. |
+| `boto3.client("s3", endpoint_url=..., aws_access_key_id=..., ...)` | One client for the whole process, created at start-up. The keys come from the environment, never from the code. | Keys written in the code would end up in git. |
+| `signature_version="s3v4"` | The current signing method (**Signature Version 4**), used by real S3 and by the lab server. | An old signing method may be rejected. |
+| `s3={"addressing_style": "path"}` | The bucket goes in the **path** (`http://s3:8333/uploads/...`), not in the host name. Real S3 uses the host name (`uploads.s3.amazonaws.com`), which a container name cannot imitate. | With the default style boto3 may try `http://uploads.s3:8333`, a host name that does not exist. |
+| `connect_timeout=2, read_timeout=5, retries={"max_attempts": 1}` | A dead store makes the request fail after a few seconds, not a minute (same idea as the cache's 1-second timeouts). | Default values wait much longer and retry several times. |
+| `MAX_UPLOAD_BYTES` and `file.file.read(MAX + 1)` | Reads at most one byte more than allowed: if that extra byte is there, the file is too big (`413`). | Without a limit one client could fill the API's memory. |
+| `re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(...))` | Keeps only safe characters in the file name and drops any directory part. | Keys built from raw names could contain `../` or odd characters. |
+| `key = f"originals/{uuid4().hex}-{name}"` | A unique key per upload: a random id plus the cleaned name. The `originals/` prefix groups the files (step 24 will put thumbnails elsewhere). | A key made only from the file name would overwrite an earlier upload with the same name. |
+| `put_object(...)` | Stores the bytes under the key, with the content type. | Without `ContentType` the object would be served as a generic binary. |
+| `generate_presigned_url("get_object", ..., ExpiresIn=300)` | Builds the signed link, valid 300 seconds. **No network call**: it is computed locally from the secret key. | A long expiry means a leaked link works for longer. |
+| `except (BotoCoreError, ClientError)` → `502` | Any storage problem becomes a clean `502`, with the details in the log, not in the answer. | Without it a stopped store would give the client an ugly `500`. |
+| `client_max_body_size 6m;` | Nginx's limit for a request body (default 1 MB). 6 MB leaves room above the API's 5 MB. | At the default, any file over about 1 MB is refused by Nginx before the API sees it. |
+
+**Rebuild and restart:**
+```bash
+docker compose up -d --build                  # add LB_HOST_PORT=8081 in front if port 80 is busy
+docker compose exec -T lb nginx -s reload     # only needed when you change nginx.conf alone
+```
+(The first command re-creates the three `api` containers with the new image and waits for `s3-init` to have finished.)
+
+**Check 1 — the step's check: upload returns a key and a URL.**
+```bash
+echo "hello from the upload test" > hello.txt
+curl -s -w '\n[HTTP %{http_code}]\n' -F "file=@hello.txt;type=text/plain" localhost:8081/upload
+```
+```text
+{"key":"uploads/ff7d5231be0148e4912ad1374dae5f33-hello.txt","size":27,"content_type":"text/plain","url":"http://s3:8333/uploads/uploads/ff7d5231be0148e4912ad1374dae5f33-hello.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=lab-access-key%2F20261119%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261119T145008Z&X-Amz-Expires=300&X-Amz-SignedHeaders=host&X-Amz-Signature=4e5776fea9f8f6ccea3e34f980450c841922405b69e0db61469d2cf5695d45a9","expires_in":300}
+[HTTP 201]
+```
+`-F "file=@hello.txt"` sends the file as a multipart form field named `file`. The answer is `201 Created` with the object's key and the URL. (This run was made **before** the key prefix was renamed from `uploads/` to `originals/`: the repeated `uploads/uploads/` in the path, bucket then prefix, is why the prefix was changed; the code above is the final version.) Read the URL:
+
+| Part of the URL | Meaning |
+|---|---|
+| `http://s3:8333/uploads/<key>` | endpoint, then bucket, then key (path-style) |
+| `X-Amz-Algorithm=AWS4-HMAC-SHA256` | the signing method (Signature Version 4) |
+| `X-Amz-Credential=lab-access-key/20261119/us-east-1/s3/aws4_request` | **who** signed (the access key id, never the secret), the date and the scope |
+| `X-Amz-Expires=300` | the link is valid for 300 seconds |
+| `X-Amz-SignedHeaders=host` | the signature covers the `Host` header |
+| `X-Amz-Signature=...` | the signature itself |
+
+The host in the URL is `s3`, a name that only exists **inside** Docker. So this link works from other containers but not yet from your browser: making it work from the host is step 20.
+
+**Check 2 — the link really downloads the object (from inside the private network), and the bytes match.** A throw-away container on the lab network fetches the URL; for a binary file the SHA-256 checksums are compared:
+```bash
+# the 27-byte text file, with the final code (key prefix "originals/")
+docker run --rm --network aws-local-lab_private alpine:3.24 wget -qO- "$URL"
+# a 200,000-byte random file
+head -c 200000 /dev/urandom > rnd.bin
+curl -s -F "file=@rnd.bin" localhost:8081/upload        # note the "url" field, put it in $URL2
+sha256sum rnd.bin | cut -c1-16
+docker run --rm --network aws-local-lab_private alpine:3.24 sh -c "wget -qO- '$URL2' | sha256sum" | cut -c1-16
+```
+```text
+hello from the upload test
+originals/20ba04a0d9c24b4e81396c86d516419f-rnd.bin 200000 application/octet-stream
+17ff2c737f957c74
+17ff2c737f957c74
+```
+(`$URL` and `$URL2` are the `url` values of the two uploads; the key line comes from a small Python snippet that printed the answer's fields, and the checksums are cut to 16 characters.) The text comes back unchanged, and the two checksums are **identical**: the object in the bucket is byte for byte the file you uploaded. `application/octet-stream` is the content type curl sends for a file it cannot recognise.
+
+**Check 3 — the signature protects the object:**
+```bash
+docker run --rm --network aws-local-lab_private alpine:3.24 wget -S -qO- "<the URL with its last character changed>"
+docker run --rm --network aws-local-lab_private alpine:3.24 wget -S -qO- "<the URL without the query string>"
+```
+```text
+  HTTP/1.1 403 Forbidden
+wget: server returned error: HTTP/1.1 403 Forbidden
+  HTTP/1.1 403 Forbidden
+wget: server returned error: HTTP/1.1 403 Forbidden
+```
+A link with a **modified signature**, and the plain object address **without** any signature, are both refused with `403 Forbidden`. Only the exact signed URL works: that is what makes a presigned URL safe to hand out.
+
+**Check 4 — bad input.**
+```bash
+curl -s -w ' [HTTP %{http_code}]\n' -X POST localhost:8081/upload -F "other=x"
+curl -s -F 'file=@hello.txt;filename=../../etc/pass wd.txt' localhost:8081/upload     # a hostile file name
+```
+```text
+{"detail":[{"type":"missing","loc":["body","file"],"msg":"Field required","input":null}]} [HTTP 422]
+originals/f966e2ac0dfb4a6f873a5cdef68d9403-pass_wd.txt
+```
+A request without the `file` field gets `422` from FastAPI's validation. The hostile name `../../etc/pass wd.txt` was stored as `pass_wd.txt`: the directory part is dropped and the space becomes `_`. (The second line is the `key` of the answer, extracted.)
+
+**Check 5 — two size limits, one in front of the other.** With files of 2,000,000, 6,000,000 and 7,000,000 bytes:
+```bash
+curl -s -w ' [HTTP %{http_code}]\n' -F "file=@six.bin" localhost:8081/upload
+curl -s -o /dev/null -w '[HTTP %{http_code}]\n' -F "file=@seven.bin" localhost:8081/upload
+```
+```text
+--- 2 MB
+{"key":"originals/3bc1561151594d7ab52aa56b6a2ecc73-two.bin","size":2000000,"cont ...  [HTTP 201]
+--- 6 MB (6,000,000 bytes: passes nginx, over the API limit)
+{"detail":"file too large (max 5242880 bytes)"} [HTTP 413]
+--- 7 MB (over nginx limit)
+[HTTP 413]
+```
+(The 2 MB line is cut after 80 characters: the answer was the usual `201` with key and URL. The `---` labels were added with `echo`.) The 6 MB file reaches the API, which refuses it with its own JSON message. The 7 MB file never reaches the API: **Nginx** answers `413` first (an HTML page, not JSON). The same `413` code, two different layers: the answer's body tells you which. Before the `client_max_body_size` line was added, the **2 MB** file was also refused by Nginx (`413 Request Entity Too Large`, with `nginx/1.30.6` in the page): the default limit is 1 MB.
+
+**Check 6 — the store goes away, the API keeps working.**
+```bash
+docker compose stop s3
+curl -s -m 20 -w ' [HTTP %{http_code}]\n' -F "file=@hello.txt" localhost:8081/upload
+curl -s -o /dev/null -w 'GET /notes [HTTP %{http_code}]\n' localhost:8081/notes
+docker compose logs api | grep "storage error" | tail -1
+docker compose start s3
+```
+```text
+{"detail":"object storage unavailable"} [HTTP 502]
+GET /notes [HTTP 200]
+api-2  | ERROR:    storage error on originals/7fce4e8b19f64eedbc86418d5f0e0295-hello.txt: Could not connect to the endpoint URL: "http://s3:8333/uploads/originals/7fce4e8b19f64eedbc86418d5f0e0295-hello.txt"
+```
+With the store stopped, the upload fails fast with a clean `502` (details only in the log), while the other routes keep working. (Right after `docker compose start s3` the first upload also answered `502`; the next attempt, a few seconds later, was `201`. I did not investigate further.)
+
+**Regression check — the whole suite:**
+```bash
+make test                                 # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+== tests/05_cache.sh
+05_cache: all checks passed
+```
+(Trimmed to the summary lines; `make` exited with code 0.) The test objects were deleted afterwards with `aws s3 rm s3://uploads --recursive`.
+
+**What just happened:**
+- The API can now **write to S3**, with the same boto3 code you would use in production: only `endpoint_url` and the path-style option are specific to the lab.
+- You generated a **presigned URL** and saw that it carries its own proof (the signature) and its own deadline (`X-Amz-Expires`); the secret key stays inside the API.
+- Uploads are **untrusted input**: the size is capped (twice, at Nginx and in the API), the file name is cleaned and the key is generated, not chosen by the client.
+- Storage is a **soft dependency of one route**: if it fails, `POST /upload` answers `502` and everything else keeps working.
+- The URL is signed for the host `s3`, so only containers can use it. Step 20 fixes that.
+
 ## 5–11. To be completed at the end of Lab 06
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 21). The problems met so far:
 
@@ -273,4 +519,6 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `no such manifest: quay.io/minio/minio:latest` (also `...:RELEASE.2025-09-07T16-13-09Z`), and `denied: requested access to the resource is denied` for `minio/minio` on Docker Hub | MinIO stopped publishing community container images and archived the project. | Use another S3-compatible server. This lab uses SeaweedFS (decision D5 in `PLAN.md`). |
 | `Check Meta Folder (-mdir="C:/Program Files/Git/data") Writable: stat C:/Program Files/Git/data: no such file or directory` when running the image with `docker run ... server -dir=/data` from Git Bash | Git Bash rewrites an argument that looks like a Unix path (`/data`) into a Windows path before Docker sees it. Compose files are not affected. | Prefix the command with `MSYS_NO_PATHCONV=1`, or use `docker compose` with the path inside the YAML. |
 | `required variable S3_ACCESS_KEY is missing a value` on **any** `docker compose` command | The S3 keys have no default and Compose checks the whole file. | Add `S3_ACCESS_KEY` and `S3_SECRET_KEY` to `.env` (section 3). |
+| `curl: (26)` and `HTTP 000` when uploading with `-F "file=@/tmp/hello.txt"` from Git Bash | The Windows `curl.exe` cannot read the Git Bash path `/tmp/...`: it is not a Windows path. | Run `curl` from the folder that holds the file and use a relative name (`-F "file=@hello.txt"`), or a Windows path. |
+| `413 Request Entity Too Large` with a small HTML page that ends in `nginx/1.30.6`, for a file of 2 MB | Nginx's default `client_max_body_size` is 1 MB, below the API's 5 MB limit. A JSON `413` (`file too large`) comes from the API instead. | `client_max_body_size 6m;` in `lb/nginx.conf`, then `docker compose exec -T lb nginx -s reload`. |
 | `SignatureDoesNotMatch` from the AWS CLI | The secret key used by the client is not the one the server was started with. | Use the same `S3_SECRET_KEY`. If you changed it in `.env`, run `docker compose up -d` again so `s3` restarts with the new value. |
