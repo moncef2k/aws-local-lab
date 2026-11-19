@@ -98,14 +98,19 @@ $ docker port net01-web
 | `curl -m 3 URL` | Like `wget`; `-m 3` is the maximum time in seconds. Exit code `28` means "timed out". |
 | `docker port NAME` | Show which container ports are published on which host address and port. |
 | `docker run -p HOST_IP:HOST_PORT:CONTAINER_PORT` | Publish a container port. |
+| `docker run -d --rm --name N IMAGE` | Start a container: `-d` in the background, `--rm` delete it when it stops, `--name N` give it a name you can use later. |
+| `docker exec N CMD` | Run a command **inside** the running container `N`. |
+| `sh -c "..."` | Run the quoted text as a small shell script (needed to run two commands, or use `$?`, in one container). `echo exit=$?` prints the exit code of the previous command. |
+| `time CMD` | Run `CMD` and print how long it took (`real` is the clock time). |
+| `\| head -4` | Keep only the first 4 lines of the output. |
 
 ## Hands-on
 Throw-away containers only (pinned images, nothing from the lab is touched). Real output, trimmed. One Nginx server named `net01-web` and short-lived `alpine` clients.
 
-**1. Start a web server, and look at the addresses**
+**1. Look at the addresses, then start a web server**
 ```bash
+docker run --rm alpine:3.24 ip -4 addr                                          # a first, short-lived container
 docker run -d --rm --name net01-web -p 127.0.0.1:18080:80 nginx:1.30.6-alpine
-docker run --rm alpine:3.24 ip -4 addr
 docker inspect -f '{{.NetworkSettings.Networks.bridge.IPAddress}}' net01-web
 docker exec net01-web netstat -ltn
 ```
@@ -119,7 +124,7 @@ Proto Recv-Q Send-Q Local Address           Foreign Address         State
 tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
 tcp        0      0 :::80                   :::*                    LISTEN
 ```
-**How to read it:** every container has two interfaces, the loopback and `eth0`. The first `alpine` container (already gone) was given `172.17.0.2`; it was reused for the web server afterwards, which shows an address is **lent**, not owned. Nginx listens on port 80 on all addresses.
+**How to read it:** every container has two interfaces, the loopback and `eth0`. The first `alpine` container (it ran and was removed straight away) was given `172.17.0.2`; the web server started right after it got the **same** address, which shows an address is **lent**, not owned. Nginx listens on port 80 on all addresses.
 
 **2. `localhost` is always "myself"**
 ```bash

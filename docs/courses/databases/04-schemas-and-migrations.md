@@ -118,6 +118,11 @@ All run inside the project image (`docker exec ... alembic ...`); Alembic finds 
 | `alembic upgrade head` | Run all missing revisions, in order, up to the newest. Also written `upgrade +1` (one step) or `upgrade 0001` (up to that id). |
 | `alembic downgrade -1` | Undo the last applied revision (runs its `downgrade()`). `downgrade base` undoes everything. |
 | `alembic revision -m "msg"` | Create a new, empty revision file with the right ids (you fill in `upgrade` and `downgrade`). |
+| `docker run -d --rm --name N` | Start a throw-away container: `-d` in the background, `--rm` delete it when it stops, `--name N` its name. |
+| `-e NAME=value` | Set an environment variable inside the container (here the database address, `DATABASE_URL`). |
+| `--network container:N` | Share the network of container `N`: both see the same `localhost`. |
+| `until docker exec ... pg_isready -q; do sleep 1; done` | Repeat "is the database ready?" every second until it says yes (`-q` = print nothing, only the exit code). |
+| `psql -U postgres -c '\dt'` | Run one command in the database (`-c`) as role `postgres`; `\dt` lists tables. `-tA` prints bare values without table borders. |
 | `INFO [alembic.runtime.migration] ...` | Alembic's own log lines: which migration it runs. Read them like a diary. |
 
 ## Hands-on
@@ -195,11 +200,13 @@ INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, add done column
 **6. Undo it**
 ```bash
 docker exec dbcourse-mig alembic downgrade -1
+docker exec dbcourse-pg psql -U postgres -tA -c "select count(*) from information_schema.columns where table_name='notes' and column_name='done'"
 ```
 ```text
 INFO  [alembic.runtime.migration] Running downgrade 0002 -> 0001, add done column
+0
 ```
-`alembic_version` is `0001` again and the `done` column is gone (a count of columns named `done` printed `0`). **Warning:** `drop_column` deletes the data in that column. A downgrade is a tool for development; on production data the usual way back is a new forward migration.
+`alembic_version` is `0001` again and the `done` column is gone (the query counts the columns named `done`: `0`; `-tA` prints just the value). **Warning:** `drop_column` deletes the data in that column. A downgrade is a tool for development; on production data the usual way back is a new forward migration.
 
 **7. Clean up**
 ```bash
