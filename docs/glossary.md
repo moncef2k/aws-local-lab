@@ -12,7 +12,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one. | AWS only — cannot be simulated on one laptop | 03 |
 | **Bastion host** | A small, hardened server you go through to reach machines that are not exposed to the internet (such as a database in a private subnet). AWS offers Systems Manager Session Manager as a bastion without open ports. | AWS: bastion EC2 / SSM Session Manager · Local: the `db-proxy` service | 04 |
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
-| **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: MinIO bucket | 06 |
+| **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: SeaweedFS bucket | 06 |
 | **Cache hit / miss** | A **hit** means the answer was found in the cache; a **miss** means it was not, so the program asks the original source (the database) and usually stores the answer. | Local: Redis cache (Lab 05) | 05 |
 | **Cache invalidation** | Removing or refreshing a cached copy because the original changed. In cache-aside the application deletes the cached copy right after it writes to the database. | Local: `forget()` in `api/main.py` | 05 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
@@ -53,7 +53,6 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Make / Makefile** | A tool that runs named recipes (`make up`) defined in a `Makefile`. Used here as a shortcut for long Docker commands. | Local tool | 00 |
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
 | **Migration** | A small numbered script that changes the structure of a database (create a table, add a column). Applied in order, once each, so every copy of the database ends up the same. | Local: Alembic · AWS: run as a task or pipeline step before deployment | 04 |
-| **MinIO** | An S3-compatible object store you can run locally. | Local stand-in for S3 | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **One-shot job** | A container that does one task and exits (code 0 = success) instead of running forever, like the `migrate` service. | AWS: ECS run-task, Kubernetes Job, CI step · Local: Compose service with `restart: "no"` | 04 |
@@ -61,7 +60,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
-| **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: MinIO | 06 |
+| **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: SeaweedFS | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
@@ -71,7 +70,9 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
-| **S3** | AWS object storage (files in buckets). | Local: MinIO | 06 |
+| **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |
+| **S3 endpoint** | The address of the S3 API. SDKs and the AWS CLI use `amazonaws.com` by default; `--endpoint-url` points them at another server. | Local: `http://s3:8333` | 06 |
+| **SeaweedFS** | An open-source storage system with an S3-compatible API; the lab uses it as the local S3 because MinIO no longer publishes container images. | Local stand-in for S3 | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |
 | **Session (database)** | A short conversation with the database inside which changes are staged and then saved with `commit` (or dropped). The API opens one per request and closes it at the end. | Local: SQLAlchemy `Session` | 04 |

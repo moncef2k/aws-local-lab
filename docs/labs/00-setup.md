@@ -32,7 +32,7 @@ Each AWS service has an open-source stand-in that speaks the same protocol, runn
 | App servers | ECS / EKS | Docker Compose, then k3d |
 | Database | RDS | PostgreSQL container |
 | Cache | ElastiCache | Redis container |
-| Object storage | S3 | MinIO |
+| Object storage | S3 | SeaweedFS (S3-compatible; MinIO no longer ships images) |
 | Monitoring | CloudWatch | Prometheus, Grafana, Loki |
 | Infrastructure as Code | CloudFormation | Terraform + a local AWS emulator |
 
@@ -48,7 +48,7 @@ flowchart LR
   subgraph private[private network]
     api[API x3] --> db[(Postgres)]
     api --> cache[(Redis)]
-    api --> s3[(MinIO)]
+    api --> s3[(SeaweedFS)]
     worker[Worker] --> cache
     worker --> s3
   end

@@ -32,7 +32,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [03](./03-networking.md) | Networking: public and private networks | VPC, subnets, security groups | ✅ done |
 | [04](./04-database.md) | Database, migrations, persistence | RDS | ✅ done |
 | [05](./05-caching.md) | Caching (cache-aside) | ElastiCache | ✅ done |
-| 06 | Object storage and presigned URLs | S3 | ⬜ planned |
+| [06](./06-object-storage.md) | Object storage and presigned URLs | S3 | 🚧 in progress |
 | 07 | Queues and workers | SQS, Lambda / ECS workers | ⬜ planned |
 | 08 | Static frontend and caching headers | S3 static hosting, CloudFront | ⬜ planned |
 | 09 | Monitoring and logs | CloudWatch | ⬜ planned |

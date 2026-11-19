@@ -64,7 +64,7 @@ labs 00-02 uses one slot per step until step 36. Nothing is skipped, it is just 
 8. Constraints that delay a module on purpose: Kubernetes modules wait until k3d is installed (step 40, with your OK);
    Terraform modules wait until Terraform is installed (step 53, with your OK), except the concept module (step 52).
    The AWS course has no exercises against a real account; its exercises are "map this lab component to the service" tasks or
-   run against local stand-ins (MinIO, later the emulator). I say so inside the module rather than invent output.
+   run against local stand-ins (SeaweedFS as the local S3, later the emulator). I say so inside the module rather than invent output.
 
 ## On-request modules
 
@@ -193,13 +193,13 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
 | 01 | Regions and Availability Zones | `01-regions-and-azs.md` | step 1 (Lab 00) | step 32 | - | Lab 00 theory: what AWS is, what a laptop cannot simulate |
-| 02 | IAM: users, roles, policies, access keys | `02-iam.md` | step 18 (Lab 06) | step 32 | - | Fake access keys for MinIO; presigned URLs (19-20) |
+| 02 | IAM: users, roles, policies, access keys | `02-iam.md` | step 18 (Lab 06) | step 32 | - | Fake access keys for the local S3 (SeaweedFS); presigned URLs (19-20) |
 | 03 | Compute: EC2, ECS, Fargate and EKS | `03-compute.md` | step 2 (Lab 01) | step 33 | - | Lab 01: container vs VM, 'Going to real AWS'; EKS from step 40 |
 | 04 | VPC: subnets, route tables, gateways | `04-vpc.md` | step 8 (Lab 03) | step 10 | AWSLAB-84 | Public/private Docker networks |
 | 05 | ELB: ALB, target groups, health checks | `05-elb.md` | step 4 (Lab 02) | step 34 | - | Nginx stands in for the ALB |
 | 06 | RDS: managed databases | `06-rds.md` | step 10 (Lab 04) | step 12 | AWSLAB-88 | Postgres container stands in for RDS |
 | 07 | ElastiCache | `07-elasticache.md` | step 15 (Lab 05) | step 25 | - | Redis container stands in for ElastiCache |
-| 08 | S3: buckets, objects, presigned URLs | `08-s3.md` | step 18 (Lab 06) | step 33 | - | MinIO, `POST /upload` |
+| 08 | S3: buckets, objects, presigned URLs | `08-s3.md` | step 18 (Lab 06) | step 33 | - | SeaweedFS (local S3), `POST /upload` |
 | 09 | CloudFront and CDNs | `09-cloudfront.md` | step 26 (Lab 08) | on request | - | Static frontend + caching headers (Lab 08) |
 | 10 | SQS: standard and FIFO queues | `10-sqs.md` | step 22 (Lab 07) | step 34 | - | Redis queue now, SQS in steps 56-58 |
 | 11 | DynamoDB | `11-dynamodb.md` | step 55 (Lab 13) | on request | - | Table created with Terraform |

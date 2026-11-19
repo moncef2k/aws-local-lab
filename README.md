@@ -32,7 +32,7 @@ flowchart LR
     worker[Worker]
     db[(PostgreSQL)]
     cache[(Redis)]
-    s3[(MinIO)]
+    s3[(SeaweedFS)]
   end
   lb --> api
   lb --> fe
@@ -58,7 +58,7 @@ service yet; those arrive lab by lab. Phases 2 and 3 (Kubernetes, Terraform) are
 | Private network | VPC, subnets, security groups | Docker networks | 🔜 planned (Lab 03) |
 | Database | RDS | PostgreSQL | 🔜 planned (Lab 04) |
 | Cache | ElastiCache | Redis | 🔜 planned (Lab 05) |
-| Object storage | S3 | MinIO | 🔜 planned (Lab 06) |
+| Object storage | S3 | SeaweedFS (MinIO no longer ships images) | 🚧 in progress (Lab 06) |
 | Queue and worker | SQS | Redis list, then SQS on an emulator | 🔜 planned (Lab 07, 13) |
 | Static frontend and CDN | S3 static hosting, CloudFront | Nginx + cache headers | 🔜 planned (Lab 08) |
 | Monitoring | CloudWatch | Prometheus, Grafana, Loki | 🔜 planned (Lab 09) |

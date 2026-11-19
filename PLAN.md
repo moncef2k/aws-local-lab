@@ -50,8 +50,8 @@ Nothing will be installed system-wide without asking you first.
 - **D5 – S3 server (decided by you on 2026-11-19, step 18):** **SeaweedFS** (`chrislusf/seaweedfs`) instead of MinIO,
   because MinIO no longer publishes container images (`quay.io/minio/minio` has no manifest, Docker Hub answers
   `denied`). Same S3 protocol, so boto3 and presigned URLs work the same. The bucket bootstrap job uses the
-  **AWS CLI** image (`amazon/aws-cli`) with `--endpoint-url` instead of `mc`. SeaweedFS has no S3 web console in
-  `server` mode, so the D4 `console.localhost` route does not apply to S3. Where this file says MinIO below, read SeaweedFS.
+  **AWS CLI** image (`amazon/aws-cli`) with `--endpoint-url` instead of `mc`. MinIO's S3 web console has no
+  counterpart in this setup, so the D4 `console.localhost` route is dropped for S3. Where this file says MinIO below, read SeaweedFS.
 
 ## Known constraints from the hooks
 - `docker compose down -v` and `docker volume rm/prune` are blocked, so **`make clean` is something you run
