@@ -13,7 +13,7 @@ Back to the [course index](../README.md). Read each module next to [Lab 04](../.
 | 02 | [SQL basics](./02-sql.md) | ✅ written | Lab 04, step 10 |
 | 03 | [PostgreSQL: server, roles, databases](./03-postgresql.md) | ✅ written | Lab 04, step 10 |
 | 04 | [Schemas, migrations and Alembic](./04-schemas-and-migrations.md) | ✅ written | Lab 04, step 11 |
-| 05 | ORMs and SQLAlchemy | ⬜ planned | Lab 04, step 11 |
+| 05 | [ORMs and SQLAlchemy](./05-sqlalchemy.md) | ✅ written | Lab 04, step 11 |
 | 06 | Indexes | ⬜ planned | Lab 04, step 12 |
 | 07 | Transactions | ⬜ planned | Lab 04, step 12 |
 | 08 | Connection pooling | ⬜ planned | Lab 04, step 12 |
