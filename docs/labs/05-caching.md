@@ -571,6 +571,7 @@ fi
 cleanup() {
   docker compose start redis >/dev/null 2>&1   # in case the test stopped it and failed half way
   curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id"
+  [ -n "${id2:-}" ] && curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id2"   # the BYPASS note (step 7)
 }
 trap cleanup EXIT
 ok "created note $id"
@@ -633,7 +634,7 @@ exit "$fail"
 | `addr=$(docker compose port lb 80)` and `url=...` | Finds the address the load balancer really publishes (80, or 8081 if you changed `LB_HOST_PORT`), so the test works on any machine. | A fixed `localhost:80` fails where port 80 is busy. |
 | `xcache()` | Calls `GET /notes/<id>`, throws the body away (`-o /dev/null`), dumps the headers (`-D -`), removes the carriage returns and prints only the value of `X-Cache`. The pattern `[Xx]-[Cc]ache` accepts any letter case (header names are case-insensitive). | Reading the body instead would not tell HIT from MISS: both return the same JSON. |
 | `rcli()` | Runs `redis-cli` **inside** the redis container with the password the container already has (`REDISCLI_AUTH`), so the test never needs your `.env`. | Calling `redis-cli` from the host fails: there is no published port (step 15). |
-| `trap cleanup EXIT` | Whatever happens (a failed check, Ctrl+C), the test restarts Redis and deletes its note. | Without it a test that fails half way could leave Redis stopped, and the next test would fail for the wrong reason. |
+| `trap cleanup EXIT` | Whatever happens (a failed check, Ctrl+C), the test restarts Redis and deletes both of its notes. | Without it a test that fails half way could leave Redis stopped, and the next test would fail for the wrong reason. |
 | Step 2: one `MISS`, then six reads that must all be `HIT` | Six reads are spread by the load balancer over the three replicas. All `HIT` means the copy is **shared** (it lives in Redis, not in one replica's memory). | With a per-replica cache (a Python dict) some reads would be `MISS`. |
 | Step 3: `ttl` between 1 and `CACHE_TTL_SECONDS` | The copy has an expiry that is not longer than the configured one. The limit is read from the API container, so it follows your `.env`. `-1` would mean "no expiry". | A key without `ex=` would stay for ever and could be stale for ever. |
 | Step 4: `PUT`, then `MISS`, then the new body | The write invalidated the copy, and the refill holds the new text. | A missing `forget()` shows up here as `HIT` with the old body. |
