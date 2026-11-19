@@ -1229,3 +1229,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [FastAPI 07 - Dependencies and dependency injection](../courses/fastapi/07-dependencies.md)
 - Course: [Databases 04 - Schemas, migrations and Alembic](../courses/databases/04-schemas-and-migrations.md)
 - Course: [Databases 05 - ORMs and SQLAlchemy](../courses/databases/05-sqlalchemy.md)
+- Course: [FastAPI 03 - Path, query and body parameters](../courses/fastapi/03-parameters.md)
