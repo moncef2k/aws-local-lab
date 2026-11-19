@@ -11,7 +11,7 @@ Back to the [course index](../README.md).
 | # | Module | Status | First used in the labs |
 |---|---|---|---|
 | 01 | [IP addresses, ports, localhost and TCP](./01-ip-ports-tcp.md) | ✅ written | Lab 01, step 2 |
-| 02 | DNS | ⬜ planned | Lab 02, step 4 |
+| 02 | [DNS](./02-dns.md) | ✅ written | Lab 02, step 4 |
 | 03 | HTTP requests, responses and status codes | ⬜ planned | Lab 01, step 2 |
 | 04 | Proxies: forward vs reverse | ⬜ planned | Lab 02, step 4 |
 | 05 | NAT and port forwarding | ⬜ planned | Lab 01, step 3 |

@@ -709,3 +709,6 @@ make down        # stops and removes the containers and the network; nothing els
 - [`ngx_http_proxy_module`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html): `proxy_connect_timeout`,
   `proxy_next_upstream` (Nginx)
 - [Networking in Docker: DNS services](https://docs.docker.com/engine/network/#dns-services) (Docker)
+
+## Go deeper
+- Course: [Networking 02 - DNS](../courses/networking/02-dns.md)
