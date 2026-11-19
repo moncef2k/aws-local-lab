@@ -125,6 +125,52 @@ services:
       retries: 5
       start_period: 5s
 
+  # Object storage (S3 in AWS). MinIO, the usual choice, no longer publishes images, so the lab uses
+  # SeaweedFS: it speaks the same S3 protocol. Private network only and no "ports:": the API reaches
+  # it as http://s3:8333. The files live in a named volume and survive "docker compose down".
+  s3:
+    image: chrislusf/seaweedfs:4.54
+    environment:
+      # Fake root credentials of the S3 API (SeaweedFS reads these two standard names).
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
+    # "server -s3" runs the whole store in one container (master, volume server, filer, S3 gateway).
+    # Small volumes (64 MB, at most 20) so the lab does not reserve gigabytes on your disk.
+    command: [server, -dir=/data, -s3, -master.volumeSizeLimitMB=64, -volume.max=20]
+    volumes:
+      - s3data:/data
+    networks:
+      - private
+    healthcheck:
+      # The S3 gateway answers 200 on /healthz once it can talk to the rest of the store.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # One-shot job: creates the bucket once the store is healthy, then exits (like the "migrate" job).
+  # It checks first, so running it again changes nothing.
+  s3-init:
+    image: amazon/aws-cli:2.41.1
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
+      AWS_DEFAULT_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-uploads}
+    entrypoint: [sh, -c]
+    command:
+      - |
+        aws --endpoint-url http://s3:8333 s3api head-bucket --bucket "$$S3_BUCKET" 2>/dev/null \
+          && echo "bucket $$S3_BUCKET already exists" \
+          || aws --endpoint-url http://s3:8333 s3 mb "s3://$$S3_BUCKET"
+    networks:
+      - private
+    depends_on:
+      s3:
+        condition: service_healthy
+    restart: "no"
+
   # The "bastion host" for the database: off by default, started only with "--profile admin".
   # Postgres itself never publishes a port (it sits on the internal "private" network, which cannot
   # publish ports at all), so a tiny relay joins "public" (to publish) and "private" (to reach it).
@@ -153,3 +199,5 @@ networks:
 volumes:
   # Survives "docker compose down" (like an RDS storage volume survives a reboot).
   pgdata:
+  # The object store's files (like the storage behind an S3 bucket).
+  s3data:

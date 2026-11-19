@@ -47,6 +47,11 @@ Nothing will be installed system-wide without asking you first.
 - **D4 – Reaching Grafana / MinIO console / Prometheus:** host-based routing through the load balancer
   (`grafana.localhost`, `s3.localhost`, `console.localhost`) instead of extra published ports. Presigned URLs
   also need `s3.localhost` to be valid from your browser.
+- **D5 – S3 server (decided by you on 2026-11-19, step 18):** **SeaweedFS** (`chrislusf/seaweedfs`) instead of MinIO,
+  because MinIO no longer publishes container images (`quay.io/minio/minio` has no manifest, Docker Hub answers
+  `denied`). Same S3 protocol, so boto3 and presigned URLs work the same. The bucket bootstrap job uses the
+  **AWS CLI** image (`amazon/aws-cli`) with `--endpoint-url` instead of `mc`. SeaweedFS has no S3 web console in
+  `server` mode, so the D4 `console.localhost` route does not apply to S3. Where this file says MinIO below, read SeaweedFS.
 
 ## Known constraints from the hooks
 - `docker compose down -v` and `docker volume rm/prune` are blocked, so **`make clean` is something you run
@@ -117,15 +122,15 @@ Nothing will be installed system-wide without asking you first.
 - [x] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.
 
 ### Lab 06 — Object storage (S3) · epic `AWSLAB-10`
-- [ ] **18. MinIO + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `mc` job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `mc`.
-- [ ] **19. `POST /upload` + presigned URL.** `AWSLAB-37` boto3 against MinIO, endpoint and bucket from env vars. *Check:* upload returns key + URL.
-- [ ] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → MinIO so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
+- [x] **18. S3 server (SeaweedFS, see D5) + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `aws` CLI job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `aws s3 ls`.
+- [ ] **19. `POST /upload` + presigned URL.** `AWSLAB-37` boto3 against the S3 server (SeaweedFS), endpoint and bucket from env vars. *Check:* upload returns key + URL.
+- [ ] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → the S3 server so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
 - [ ] **21. Storage test.** `AWSLAB-39` 🔀 `tests/06_storage.sh` upload → download → compare checksum. *Check:* `make test` green.
 
 ### Lab 07 — Queues & workers (SQS) · epic `AWSLAB-11`
 - [ ] **22. `POST /jobs` + `GET /jobs/{id}`.** `AWSLAB-40` Enqueue to a Redis list (reliable `BLMOVE` pattern), job status in a Redis hash. *Check:* job id returned, status `queued`.
 - [ ] **23. Worker container.** `AWSLAB-41` `worker/` consumes jobs, config from env, no local state, graceful shutdown. *Check:* logs show job picked up, status → `done` (stub work).
-- [ ] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from MinIO (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
+- [ ] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from the S3 server (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
 - [ ] **25. Async test.** `AWSLAB-43` 🔀 `tests/07_async.sh` submit job → poll until done → thumbnail downloadable. *Check:* `make test` green.
 
 ### Lab 08 — Frontend & CDN (S3 static hosting + CloudFront) · epic `AWSLAB-12`
@@ -158,7 +163,7 @@ Full size is possible: **1 server + 2 agents** (31 GB RAM).
 - [ ] **41. Images into the cluster.** `AWSLAB-59` Build/tag apps with explicit versions, `k3d image import`. *Check:* images listed on nodes.
 - [ ] **42. Namespace, ConfigMap, Secret.** `AWSLAB-60` Secret generated from `.env` by a script, never committed. *Check:* `kubectl get cm,secret -n lab`.
 - [ ] **43. Postgres in-cluster.** `AWSLAB-61` StatefulSet + PVC + headless Service. *Check:* pod Ready, `pg_isready`.
-- [ ] **44. Redis + MinIO in-cluster.** `AWSLAB-62` *Check:* pods Ready, bucket bootstrap Job completes.
+- [ ] **44. Redis + S3 server in-cluster.** `AWSLAB-62` *Check:* pods Ready, bucket bootstrap Job completes.
 - [ ] **45. API Deployment.** `AWSLAB-63` 3 replicas, Service, liveness + readiness probes, migration Job. *Check:* `kubectl rollout status`; port-forward `/whoami`.
 - [ ] **46. Worker Deployment.** `AWSLAB-64` *Check:* a posted job reaches `done`.
 - [ ] **47. Frontend + Ingress.** `AWSLAB-65` Frontend Deployment, Traefik Ingress (bundled with k3s). *Check:* `curl localhost:8080/whoami` shows several pod names.
