@@ -216,7 +216,7 @@ redis-1      0.17%     3.836MiB / 15.27GiB
 (The project-name prefix of the container names is cut off.) The database is healthy, has never failed a check and was never restarted. Each API replica uses about 66 MiB; Redis, nearly empty, 3.8 MiB. The limit shown (`15.27GiB`) is the memory of the whole Docker Desktop VM: none of these containers has its own memory limit.
 
 ## What if…?
-**…the error message and the normal message come out in the wrong order?** Look back at exercise 3: the program printed `starting up` **first**, then the error, yet `docker logs` showed `boom: cannot open /data/x` **before** `starting up`. Docker stores the two output channels separately and `2>&1` merges them afterwards, so their relative order is **not guaranteed**. When you need the exact order,
+**…the error message and the normal message come out in the wrong order?** Look back at exercise 3: the program printed `starting up` **first**, then the error, yet `docker logs` showed `boom: cannot open /data/x` **before** `starting up`. Docker stores the two output channels separately and replays them without a guaranteed interleaving, so their relative order is **not guaranteed**. When you need the exact order,
 read the timestamps (`--timestamps`) or let the program write both to the same channel. Never conclude "the error came first" from the order of lines alone.
 
 ## In short

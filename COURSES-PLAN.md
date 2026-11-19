@@ -369,6 +369,6 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 14 | Docker 07 - Docker networks and service-name DNS | AWSLAB-93 | `fbe97a1` | PASS WITH NOTES, notes fixed |
 | step 15 | Databases 03 - PostgreSQL: server, roles, databases | AWSLAB-94 | `4d6abfc` | PASS WITH NOTES, notes fixed |
 | step 15 | Docker 09 - Docker Compose | AWSLAB-95 | `94328bb` | PASS WITH NOTES |
-| step 16 | FastAPI 07 - Dependencies and dependency injection | AWSLAB-96 | _(pending)_ | _(pending)_ |
-| step 16 | Docker 10 - Debugging: logs, exec, inspect | AWSLAB-97 | _(pending)_ | _(pending)_ |
+| step 16 | FastAPI 07 - Dependencies and dependency injection | AWSLAB-96 | `638f721` | PASS WITH NOTES |
+| step 16 | Docker 10 - Debugging: logs, exec, inspect | AWSLAB-97 | `05437a4` | PASS WITH NOTES, notes fixed |
 
