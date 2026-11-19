@@ -122,7 +122,63 @@ docker run -d --name dbcourse-mig --network container:dbcourse-pg \
 docker cp orm_demo.py dbcourse-mig:/app/orm_demo.py
 docker exec dbcourse-mig python orm_demo.py
 ```
-(The script: `Base.metadata.create_all(engine)` creates the table directly, which is fine for a throw-away demo; the lab uses Alembic. Its five sections are shown with their output below.)
+Save this as `orm_demo.py` before the `docker cp` (the full script; `Base.metadata.create_all(engine)` creates the table directly, which is fine for a throw-away demo, the lab uses Alembic). Its sections are shown with their output below.
+
+```python
+"""Databases 05 demo: the project's own Note model, with the SQL it generates printed."""
+import logging
+
+from sqlalchemy import func, select
+
+from db import Base, Note, SessionLocal, engine
+
+logging.basicConfig(format="    SQL> %(message)s")
+sql_log = logging.getLogger("sqlalchemy.engine")
+
+
+def section(title, show_sql=True):
+    sql_log.setLevel(logging.INFO if show_sql else logging.WARNING)
+    print(f"\n== {title}")
+
+
+section("0. the class describes a table", show_sql=False)
+for col in Note.__table__.columns:
+    print(f"   {col.name:<11} {col.type!s:<26} nullable={col.nullable}")
+Base.metadata.create_all(engine)
+
+section("1. add an object, then commit")
+with SessionLocal() as session:
+    note = Note(title="first", body="hello")
+    session.add(note)
+    print("   before commit: note.id =", note.id)
+    session.commit()
+    print("   after commit:  note.id =", note.id)
+
+section("2. a query")
+with SessionLocal() as session:
+    found = session.scalars(select(Note).where(Note.title == "first")).all()
+    print("   found:", [(n.id, n.title) for n in found])
+
+section("3. get() twice: the second one does not touch the database")
+with SessionLocal() as session:
+    a = session.get(Note, 1)
+    b = session.get(Note, 1)
+    print("   same Python object:", a is b)
+
+section("4. change an attribute, commit")
+with SessionLocal() as session:
+    note = session.get(Note, 1)
+    note.title = "renamed"
+    session.commit()
+
+section("5. rollback: nothing is saved", show_sql=False)
+with SessionLocal() as session:
+    session.add(Note(title="oops"))
+    session.flush()
+    print("   inside the transaction:", session.scalar(select(func.count()).select_from(Note)), "rows")
+    session.rollback()
+    print("   after rollback:        ", session.scalar(select(func.count()).select_from(Note)), "rows")
+```
 
 **2. The class describes a table**
 ```text

@@ -375,3 +375,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 16 | Docker 10 - Debugging: logs, exec, inspect | AWSLAB-97 | `05437a4` | PASS WITH NOTES, notes fixed |
 | step 17 | Databases 04 - Schemas, migrations and Alembic | AWSLAB-98 | `c597ab8` (its README and plan edits landed in `5b18a58`) | PASS WITH NOTES, notes fixed |
 | step 17 | Networking 01 - IP addresses, ports, localhost and TCP | AWSLAB-99 | `5b18a58` | PASS WITH NOTES, notes fixed |
+| step 18 | Databases 05 - ORMs and SQLAlchemy | AWSLAB-100 | `933c52b` (its README and plan edits landed in `f370dfc`) | PASS WITH NOTES, notes fixed |
+| step 18 | Networking 02 - DNS | AWSLAB-101 | `f370dfc` | PASS |
