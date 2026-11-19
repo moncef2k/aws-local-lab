@@ -378,3 +378,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 17 | Networking 01 - IP addresses, ports, localhost and TCP | AWSLAB-99 | `5b18a58` | PASS WITH NOTES, notes fixed |
 | step 18 | Databases 05 - ORMs and SQLAlchemy | AWSLAB-100 | `933c52b` (its README and plan edits landed in `f370dfc`) | PASS WITH NOTES, notes fixed |
 | step 18 | Networking 02 - DNS | AWSLAB-101 | `f370dfc` | PASS |
+| step 19 | FastAPI 03 - Path, query and body parameters | AWSLAB-102 | `806f732` (its README and plan edits landed in `2a861c8`) | PASS WITH NOTES, notes fixed |
+| step 19 | Networking 03 - HTTP requests, responses and status codes | AWSLAB-103 | `2a861c8` | PASS WITH NOTES, notes fixed |

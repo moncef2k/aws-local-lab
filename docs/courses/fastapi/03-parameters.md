@@ -24,6 +24,9 @@
 | **422** | The HTTP status "Unprocessable Content": the request was understood but its data is not valid. FastAPI sends it for every validation error. |
 | **Pydantic model** | A Python class that describes a JSON object and validates it ([FastAPI 04](./README.md), planned). `Item` below is one. |
 | **Type hint** | The `: int` after a name. FastAPI reads these to convert and check values. |
+| **`Field` / `Query`** | Helpers that attach **rules** to a value: `Field(min_length=1)` inside a model, `Query(ge=1, le=50)` for a query parameter. |
+| **`app = FastAPI()`** | Creates the application object; every `@app.get(...)` / `@app.post(...)` registers a route on it. |
+| **`async def` / `await`** | `async def` declares a function that can pause while it waits (for a file, a network call); `await` marks the place where it waits. A plain `def` works too (see [FastAPI 06](./README.md), planned). |
 | **`Annotated`** | Python's way to attach extra information (such as `Query(ge=1)`) to a type hint. |
 
 ## The idea
@@ -105,8 +108,9 @@ async def upload(file: Annotated[UploadFile, File()],         # 12 a file
 | `curl -d '{"title":"hello"}'` | Send this text as the **body**. |
 | `curl -F "file=@hello.txt;type=text/plain"` | Send a **multipart** form; `file=@hello.txt` attaches the file; `;type=` sets its content type. Another `-F "description=my note"` adds a form field. |
 | `curl -s -w ' [HTTP %{http_code}]\n'` | `-s` silent (no progress bar); `-w` prints the status code after the body. |
-| `docker run -d --rm --name N -p 127.0.0.1:18000:8000 --entrypoint sleep IMAGE 900` | Start a container that only waits, with its port 8000 reachable at `127.0.0.1:18000` on your machine (we start the app inside it afterwards). |
-| `docker exec -d -w /tmp N python -m uvicorn params_demo:app --host 0.0.0.0 --port 8000` | Run the app **in the background** (`-d`) from the folder `/tmp` (`-w`); `0.0.0.0` makes it reachable from outside the container ([Networking 01](../networking/01-ip-ports-tcp.md)). |
+| `docker run -d --rm --name N -p 127.0.0.1:18000:8000 --entrypoint sleep IMAGE 900` | Start a container that only waits (`sleep 900` = 15 minutes): `-d` in the background, `--rm` delete it when it stops, `--name N` give it a name, `-p` publish its port 8000 at `127.0.0.1:18000` on your machine, `--entrypoint sleep` replace the image's normal start command (we start the app inside it afterwards). |
+| `docker cp FILE N:PATH` | Copy a file from your computer into container `N`. |
+| `docker exec -d -w /tmp N python -m uvicorn params_demo:app --host 0.0.0.0 --port 8000` | Run a command **inside** container `N`, **in the background** (`-d`), from the folder `/tmp` (`-w`). `params_demo:app` = the object `app` in the file `params_demo.py`; `0.0.0.0` makes it reachable from outside the container ([Networking 01](../networking/01-ip-ports-tcp.md)). |
 
 ## Hands-on
 The demo app `params_demo.py` (the full file, save it as is) runs inside the project's own API image, which already has FastAPI and Uvicorn. Real output, trimmed.
@@ -213,14 +217,21 @@ docker stop fa03        # started with --rm: it removes itself
 ```
 
 ## What if…?
-**…a path parameter and its argument name do not match?** In a throw-away container (a plain `python:3.12.16-slim-trixie` with `pip install fastapi==0.163.0 httpx`) a route declares `@app.get("/items/{item_id}")` but the function is written `def read_item(id: int)`. FastAPI's test client calls it twice:
+**…a path parameter and its argument name do not match?** In a throw-away container (a plain `python:3.12.16-slim-trixie` with `pip install fastapi==0.163.0 httpx==0.28.1`) a route declares `@app.get("/items/{item_id}")` but the function is written `def read_item(id: int)`. FastAPI's test client calls it twice:
 ```text
 422 {'detail': [{'type': 'missing', 'loc': ['query', 'id'], 'msg': 'Field required', 'input': None}]}
 200 {'id': 5}
 ```
 `/items/7` fails: `id` is not in the path braces, so FastAPI treats it as a **required query parameter** (`loc` says `query`), and the `7` in the path goes nowhere. `/items/7?id=5` works, and answers with `5`, not `7`. Always check that the names in the braces and in the signature are identical.
 
-**…`python-multipart` is not installed?** In the same container, importing a file that declares `file: Annotated[UploadFile, File()]` stops at once, and the error ends with the instruction `pip install python-multipart`. The app never starts: you find out at start-up, not on the first upload.
+**…`python-multipart` is not installed?** In the same container (without `python-multipart`), importing a file that declares `file: Annotated[UploadFile, File()]` stops at once:
+```text
+RuntimeError: Form data requires "python-multipart" to be installed.
+You can install "python-multipart" with:
+
+pip install python-multipart
+```
+(Last lines of the error.) The app never starts: you find out at start-up, not on the first upload.
 
 ## In short
 1. FastAPI decides the **source** of each argument from the signature: in the path braces, a simple type (query), a Pydantic model (JSON body), `File()`/`Form()` (multipart).

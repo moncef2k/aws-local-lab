@@ -55,7 +55,7 @@ The **first digit** of the status code tells you the family:
 |---|---|---|
 | **2xx** success | It worked. | `200 OK`, `201 Created` (new note), `204 No Content` (deleted) |
 | **3xx** redirect | Look elsewhere. | (none yet) |
-| **4xx** client error | **Your request** is wrong. | `404 Not Found`, `405 Method Not Allowed`, `413 Content Too Large`, `422` invalid data |
+| **4xx** client error | **Your request** is wrong. | `404 Not Found`, `405 Method Not Allowed`, `413 Request Entity Too Large` (newer texts say "Content Too Large"), `422` invalid data |
 | **5xx** server error | **The server** failed. | `502 Bad Gateway` (the app behind the proxy did not answer properly) |
 
 ```mermaid
@@ -109,7 +109,8 @@ A real exchange captured from the lab (`curl -v localhost:8081/health`), with a 
 | `curl -w 'HTTP %{http_code}\n'` | After the transfer, print a value, here the status code. |
 | `curl -D -` | Dump the response headers to the screen (`-` means "standard output"). |
 | `tr -d '\r'` | Delete the carriage-return characters HTTP puts at the end of each header line (so the output lines up). |
-| `sed -n '1,9p'` | Print only lines 1 to 9. |
+| `sed -n '1p;/^allow/Ip;/^{/p'` | Print only the first line, the line starting with `allow` (the `I` ignores letter case) and the line starting with `{` (the JSON body). |
+| `curl -m 5` | Give up after 5 seconds in total. |
 
 ## Hands-on
 The lab is running (`make up`, here on port **8081**; use your `LB_HOST_PORT`). Real output, trimmed; a throw-away note is created and removed.
@@ -159,7 +160,7 @@ GET /notes/22          -> HTTP 200
 GET /notes/999999      -> HTTP 404
 GET /nothing-here      -> HTTP 404
 DELETE /health         -> HTTP 405
-POST /notes (no JSON)  -> HTTP 422
+POST /notes (body {})   -> HTTP 422
 DELETE /notes/22       -> HTTP 204
 GET /notes/22 (again)  -> HTTP 404
 ```
@@ -186,7 +187,7 @@ curl -s -m 5 -D - -o /dev/null -X POST localhost:8081/upload -H 'Content-Length:
 HTTP/1.1 405 Method Not Allowed
 Server: nginx/1.30.6
 Date: Thu, 19 Nov 2026 14:55:52 GMT
-Content-Type: application/json
+Content-Type: application/json          (first 4 lines of the HEAD answer)
 HTTP/1.1 413 Request Entity Too Large
 Server: nginx/1.30.6
 Date: Thu, 19 Nov 2026 14:55:53 GMT
