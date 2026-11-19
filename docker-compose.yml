@@ -19,6 +19,11 @@ services:
       # The cache address (like an ElastiCache endpoint) and how long a cached note stays valid.
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0
       CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
+      # The object store (like an S3 endpoint plus an IAM user) and the bucket the API writes to.
+      S3_ENDPOINT_URL: http://s3:8333
+      S3_BUCKET: ${S3_BUCKET:-uploads}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
     depends_on:
       # The API starts only after the migration finished successfully (the table exists).
       migrate:
@@ -26,6 +31,9 @@ services:
       # ... and once the cache answers (the API still works without it, see api/main.py).
       redis:
         condition: service_healthy
+      # ... and once the bucket exists.
+      s3-init:
+        condition: service_completed_successfully
     # No published port any more: the API is only reachable through the load balancer.
     networks:
       # Private subnet: only this network, so no route to the internet and no door to the host.

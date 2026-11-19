@@ -1,11 +1,16 @@
 import logging
 import os
+import re
 import socket
 from datetime import datetime
 from typing import Annotated, Iterator
+from uuid import uuid4
 
+import boto3
 import redis
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +27,27 @@ cache = redis.Redis.from_url(
     os.environ["REDIS_URL"], decode_responses=True, socket_connect_timeout=1, socket_timeout=1
 )
 CACHE_TTL = int(os.environ.get("CACHE_TTL_SECONDS", "60"))
+
+# Object storage (S3 in AWS). Same boto3 code as against real AWS: only the endpoint differs.
+# "path" addressing = http://s3:8333/<bucket>/<key>; real S3 uses <bucket>.s3.amazonaws.com, which a
+# container name cannot imitate.
+S3_BUCKET = os.environ["S3_BUCKET"]
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ["S3_ENDPOINT_URL"],
+    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+    region_name="us-east-1",
+    config=Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "path"},
+        connect_timeout=2,
+        read_timeout=5,
+        retries={"max_attempts": 1},
+    ),
+)
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+PRESIGN_SECONDS = int(os.environ.get("PRESIGN_SECONDS", "300"))
 
 
 def get_db() -> Iterator[Session]:
@@ -47,6 +73,14 @@ class NoteOut(NoteIn):
 
     id: int
     created_at: datetime
+
+
+class UploadOut(BaseModel):
+    key: str
+    size: int
+    content_type: str
+    url: str  # a presigned GET link: valid for expires_in seconds, no credentials needed
+    expires_in: int
 
 
 def get_note_or_404(db: Session, note_id: int) -> Note:
@@ -129,3 +163,25 @@ def delete_note(note_id: int, db: DbSession):
     db.commit()
     forget(note_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/upload", response_model=UploadOut, status_code=status.HTTP_201_CREATED)
+def upload(file: Annotated[UploadFile, File()]):
+    """Store the file in the bucket and answer with its key and a temporary download link."""
+    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"file too large (max {MAX_UPLOAD_BYTES} bytes)")
+    # The client's file name is untrusted: keep letters, digits, dot, dash, underscore only.
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(file.filename or "file"))[:100]
+    key = f"originals/{uuid4().hex}-{name}"  # the uuid makes the key unique: no overwriting
+    content_type = file.content_type or "application/octet-stream"
+    try:
+        s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data, ContentType=content_type)
+        url = s3.generate_presigned_url(
+            "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=PRESIGN_SECONDS
+        )
+    except (BotoCoreError, ClientError) as exc:
+        log.error("storage error on %s: %s", key, exc)
+        raise HTTPException(status_code=502, detail="object storage unavailable")
+    log.info("uploaded %s (%s bytes)", key, len(data))
+    return UploadOut(key=key, size=len(data), content_type=content_type, url=url, expires_in=PRESIGN_SECONDS)
