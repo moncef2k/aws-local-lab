@@ -101,7 +101,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
-| 01 | IP addresses, ports, localhost and TCP | `01-ip-ports-tcp.md` | step 2 (Lab 01) | step 17 | - | `curl localhost:<port>`, published ports; refused vs timeout during failover (6) |
+| 01 | IP addresses, ports, localhost and TCP | `01-ip-ports-tcp.md` | step 2 (Lab 01) | step 17 | AWSLAB-99 | `curl localhost:<port>`, published ports; refused vs timeout during failover (6) |
 | 02 | DNS | `02-dns.md` | step 4 (Lab 02) | step 18 | - | Docker DNS `127.0.0.11`, `resolve` + `valid=5s` |
 | 03 | HTTP requests, responses and status codes | `03-http.md` | step 2 (Lab 01) | step 19 | - | `curl` on `/health` and `/whoami`; 502/503 during failover |
 | 04 | Proxies: forward vs reverse | `04-proxies.md` | step 4 (Lab 02) | step 20 | - | Nginx as a reverse proxy in front of the API |
@@ -143,7 +143,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 01 | Relational databases: tables, rows, keys | `01-relational-basics.md` | step 10 (Lab 04) | step 13 | AWSLAB-90 | Postgres container, `\dt` |
 | 02 | SQL basics | `02-sql.md` | step 10 (Lab 04) | step 14 | AWSLAB-92 | `psql` queries; CRUD in step 12 |
 | 03 | PostgreSQL: server, roles, databases | `03-postgresql.md` | step 10 (Lab 04) | step 15 | AWSLAB-94 | `postgres` service, `pg_isready`, password from `.env` |
-| 04 | Schemas, migrations and Alembic | `04-schemas-and-migrations.md` | step 11 (Lab 04) | step 17 | - | First migration creating `notes`; `migrate` one-shot service, `alembic_version` |
+| 04 | Schemas, migrations and Alembic | `04-schemas-and-migrations.md` | step 11 (Lab 04) | step 17 | AWSLAB-98 | First migration creating `notes`; `migrate` one-shot service, `alembic_version` |
 | 05 | ORMs and SQLAlchemy | `05-sqlalchemy.md` | step 11 (Lab 04) | step 18 | - | DB layer in the API |
 | 06 | Indexes | `06-indexes.md` | step 12 (Lab 04) | step 21 | - | Primary-key lookups in `GET /notes/{id}` |
 | 07 | Transactions | `07-transactions.md` | step 12 (Lab 04) | step 22 | - | Commit/rollback in create/update/delete |
@@ -346,7 +346,8 @@ back and the plan updated.
 10. [x] Step 14 modules written (Databases 02 and Docker 07).
 11. [x] Step 15 modules written (Databases 03 and Docker 09).
 12. [x] Step 16 modules written (FastAPI 07 and Docker 10). The Docker course is now complete (10 of 10).
-13. [ ] Next modules: see "Schedule by lab step" (step 17: Databases 04 and Networking 01).
+13. [x] Step 17 modules written (Databases 04 and Networking 01).
+14. [ ] Next modules: see "Schedule by lab step" (step 18: Databases 05 and Networking 02).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_

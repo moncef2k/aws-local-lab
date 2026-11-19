@@ -22,10 +22,10 @@ Modules marked ⬜ are planned, ✅ are written.
 | Course | Modules | Written |
 |---|---|---|
 | [Docker](./docker/README.md) | 10 | 10 |
-| [Networking](./networking/README.md) | 8 | 2 |
+| [Networking](./networking/README.md) | 8 | 3 |
 | Nginx | 8 | 0 |
 | [FastAPI](./fastapi/README.md) | 7 (+1 on request) | 1 |
-| [Databases](./databases/README.md) | 9 | 3 |
+| [Databases](./databases/README.md) | 9 | 4 |
 | Caching | 6 | 0 |
 | Workers and queues | 7 | 0 |
 | Kubernetes | 10 | 0 |
@@ -38,10 +38,10 @@ Modules whose topic first appears in each lab. Read them before, during or after
 | Lab | Course modules |
 |---|---|
 | [00 - Setup](../labs/00-setup.md) | [Docker 02](./docker/02-docker-desktop-wsl2.md), AWS 01 |
-| [01 - Containers](../labs/01-containers.md) | [Docker 01](./docker/01-images-and-containers.md), [Docker 03](./docker/03-dockerfile.md), [Docker 04](./docker/04-layers-and-build-cache.md), [Docker 05](./docker/05-tags-and-registries.md), [Docker 06](./docker/06-config-and-secrets.md), [Docker 07](./docker/07-networks.md), [Docker 09](./docker/09-compose.md), [Docker 10](./docker/10-debugging.md), Networking 01, Networking 03, Networking 05, FastAPI 01, FastAPI 02, FastAPI 05, FastAPI 06, AWS 03, AWS 13 |
+| [01 - Containers](../labs/01-containers.md) | [Docker 01](./docker/01-images-and-containers.md), [Docker 03](./docker/03-dockerfile.md), [Docker 04](./docker/04-layers-and-build-cache.md), [Docker 05](./docker/05-tags-and-registries.md), [Docker 06](./docker/06-config-and-secrets.md), [Docker 07](./docker/07-networks.md), [Docker 09](./docker/09-compose.md), [Docker 10](./docker/10-debugging.md), [Networking 01](./networking/01-ip-ports-tcp.md), Networking 03, Networking 05, FastAPI 01, FastAPI 02, FastAPI 05, FastAPI 06, AWS 03, AWS 13 |
 | [02 - Load balancing](../labs/02-load-balancing.md) | Networking 02, Networking 04, Nginx 01, Nginx 02, Nginx 03, Nginx 04, Nginx 05, Nginx 08, AWS 05, AWS 14 |
 | [03 - Networking](../labs/03-networking.md) | [Networking 06](./networking/06-subnets-and-cidr.md), [Networking 07](./networking/07-firewalls-and-security-groups.md), [AWS 04](./aws/04-vpc.md) |
-| [04 - Database](../labs/04-database.md) | [Docker 08](./docker/08-volumes-and-bind-mounts.md), FastAPI 03, FastAPI 04, [FastAPI 07](./fastapi/07-dependencies.md), FastAPI 08 *(on request)*, [Databases 01](./databases/01-relational-basics.md), [Databases 02](./databases/02-sql.md), [Databases 03](./databases/03-postgresql.md), Databases 04, Databases 05, Databases 06, Databases 07, Databases 08, Databases 09, [AWS 06](./aws/06-rds.md) |
+| [04 - Database](../labs/04-database.md) | [Docker 08](./docker/08-volumes-and-bind-mounts.md), FastAPI 03, FastAPI 04, [FastAPI 07](./fastapi/07-dependencies.md), FastAPI 08 *(on request)*, [Databases 01](./databases/01-relational-basics.md), [Databases 02](./databases/02-sql.md), [Databases 03](./databases/03-postgresql.md), [Databases 04](./databases/04-schemas-and-migrations.md), Databases 05, Databases 06, Databases 07, Databases 08, Databases 09, [AWS 06](./aws/06-rds.md) |
 | [05 - Caching](../labs/README.md) | Caching 01, Caching 02, Caching 03, Caching 04, Caching 05, Caching 06, AWS 07 |
 | [06 - Object storage](../labs/README.md) | AWS 02, AWS 08 |
 | [07 - Queues and workers](../labs/README.md) | Workers and queues 01, Workers and queues 02, Workers and queues 03, Workers and queues 04, Workers and queues 05, Workers and queues 06, AWS 10 |
