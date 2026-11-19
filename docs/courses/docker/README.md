@@ -18,7 +18,7 @@ Back to the [course index](../README.md).
 | 07 | [Docker networks and service-name DNS](./07-networks.md) | ✅ written | Lab 01, step 3 |
 | 08 | [Volumes and bind mounts](./08-volumes-and-bind-mounts.md) | ✅ written | Lab 04, step 10 |
 | 09 | [Docker Compose](./09-compose.md) | ✅ written | Lab 01, step 3 |
-| 10 | Debugging: logs, exec, inspect | ⬜ planned | Lab 01, step 3 |
+| 10 | [Debugging: logs, exec, inspect](./10-debugging.md) | ✅ written | Lab 01, step 3 |
 
 The order of the numbers is the suggested reading order. The order in which modules are written follows
 [`COURSES-PLAN.md`](../../COURSES-PLAN.md).
