@@ -114,7 +114,7 @@ Nothing will be installed system-wide without asking you first.
 - [x] **15. Redis container.** `AWSLAB-33` Pinned image, `private`, password, `maxmemory` + `allkeys-lru`. *Check:* `redis-cli ping` from inside.
 - [x] **16. Cache-aside on `GET /notes/{id}`.** `AWSLAB-34` TTL, invalidation on PUT/DELETE, `X-Cache: HIT|MISS` header + log line.
   *Check:* first read MISS, second HIT, after update MISS again.
-- [ ] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.
+- [x] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.
 
 ### Lab 06 — Object storage (S3) · epic `AWSLAB-10`
 - [ ] **18. MinIO + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `mc` job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `mc`.
