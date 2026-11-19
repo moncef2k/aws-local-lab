@@ -1226,3 +1226,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [Databases 01 - Relational databases: tables, rows, keys](../courses/databases/01-relational-basics.md)
 - Course: [Databases 02 - SQL basics](../courses/databases/02-sql.md)
 - Course: [Databases 03 - PostgreSQL: server, roles, databases](../courses/databases/03-postgresql.md)
+- Course: [FastAPI 07 - Dependencies and dependency injection](../courses/fastapi/07-dependencies.md)

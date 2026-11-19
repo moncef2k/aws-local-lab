@@ -133,7 +133,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 04 | Pydantic models and validation | `04-pydantic.md` | step 12 (Lab 04) | step 20 | - | Note request/response schemas |
 | 05 | Automatic OpenAPI docs | `05-openapi-docs.md` | step 2 (Lab 01) | step 30 | - | `/docs` and `/openapi.json` come for free |
 | 06 | `async def` vs `def` | `06-async.md` | step 2 (Lab 01) | step 31 | - | Handlers in step 2; matters for DB, Redis, boto3 later |
-| 07 | Dependencies and dependency injection | `07-dependencies.md` | step 11 (Lab 04) | step 16 | - | DB session per request |
+| 07 | Dependencies and dependency injection | `07-dependencies.md` | step 11 (Lab 04) | step 16 | AWSLAB-96 | DB session per request |
 | 08 | Testing with TestClient | `08-testing.md` | step 12 (Lab 04) | on request | - | The labs test with shell scripts; this adds pytest-style tests |
 
 ### Databases - Relational basics, SQL, PostgreSQL, migrations, ORMs. (9 modules)
@@ -368,4 +368,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 14 | Docker 07 - Docker networks and service-name DNS | AWSLAB-93 | `fbe97a1` | PASS WITH NOTES, notes fixed |
 | step 15 | Databases 03 - PostgreSQL: server, roles, databases | AWSLAB-94 | `4d6abfc` | PASS WITH NOTES, notes fixed |
 | step 15 | Docker 09 - Docker Compose | AWSLAB-95 | `94328bb` | PASS WITH NOTES |
+| step 16 | FastAPI 07 - Dependencies and dependency injection | AWSLAB-96 | _(pending)_ | _(pending)_ |
 
