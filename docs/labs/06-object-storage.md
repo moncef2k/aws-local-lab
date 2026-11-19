@@ -484,7 +484,7 @@ docker compose start s3
 GET /notes [HTTP 200]
 api-2  | ERROR:    storage error on originals/7fce4e8b19f64eedbc86418d5f0e0295-hello.txt: Could not connect to the endpoint URL: "http://s3:8333/uploads/originals/7fce4e8b19f64eedbc86418d5f0e0295-hello.txt"
 ```
-With the store stopped, the upload fails fast with a clean `502` (details only in the log), while the other routes keep working. (Right after `docker compose start s3` the first upload also answered `502`; the next attempt, a few seconds later, was `201`. I did not investigate further.)
+With the store stopped, the upload fails fast with a clean `502` (details only in the log), while the other routes keep working. (Right after `docker compose start s3` the first upload also answered `502`; the next attempt, a few seconds later, was `201`: see Troubleshooting.)
 
 **Regression check — the whole suite:**
 ```bash
@@ -509,6 +509,7 @@ make test                                 # add LB_HOST_PORT=8081 in front if po
 - You generated a **presigned URL** and saw that it carries its own proof (the signature) and its own deadline (`X-Amz-Expires`); the secret key stays inside the API.
 - Uploads are **untrusted input**: the size is capped (twice, at Nginx and in the API), the file name is cleaned and the key is generated, not chosen by the client.
 - Storage is a **soft dependency of one route**: if it fails, `POST /upload` answers `502` and everything else keeps working.
+- Two limits of this step, on purpose left for later: FastAPI has already received (and, for big bodies, spooled to a temporary file) the whole upload **before** the route runs, so the `read(MAX + 1)` check protects the object store but not the API's memory or disk; the **Nginx 6 MB limit** is the real cap on how much one request can bring. And the client's `Content-Type` is stored as sent, so a file declared `text/html` would be served as HTML: before step 20 lets browsers open these URLs, consider forcing a download or an allow-list of types.
 - The URL is signed for the host `s3`, so only containers can use it. Step 20 fixes that.
 
 ## 5–11. To be completed at the end of Lab 06
@@ -519,6 +520,7 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `no such manifest: quay.io/minio/minio:latest` (also `...:RELEASE.2025-09-07T16-13-09Z`), and `denied: requested access to the resource is denied` for `minio/minio` on Docker Hub | MinIO stopped publishing community container images and archived the project. | Use another S3-compatible server. This lab uses SeaweedFS (decision D5 in `PLAN.md`). |
 | `Check Meta Folder (-mdir="C:/Program Files/Git/data") Writable: stat C:/Program Files/Git/data: no such file or directory` when running the image with `docker run ... server -dir=/data` from Git Bash | Git Bash rewrites an argument that looks like a Unix path (`/data`) into a Windows path before Docker sees it. Compose files are not affected. | Prefix the command with `MSYS_NO_PATHCONV=1`, or use `docker compose` with the path inside the YAML. |
 | `required variable S3_ACCESS_KEY is missing a value` on **any** `docker compose` command | The S3 keys have no default and Compose checks the whole file. | Add `S3_ACCESS_KEY` and `S3_SECRET_KEY` to `.env` (section 3). |
+| `502 object storage unavailable` for the **first** upload right after `docker compose start s3` (the next one, a few seconds later, works) | The `s3` container reports `healthy` slightly before the first upload can succeed; the exact cause was not investigated. | Retry after a few seconds. For a script, retry a few times with a pause. |
 | `curl: (26)` and `HTTP 000` when uploading with `-F "file=@/tmp/hello.txt"` from Git Bash | The Windows `curl.exe` cannot read the Git Bash path `/tmp/...`: it is not a Windows path. | Run `curl` from the folder that holds the file and use a relative name (`-F "file=@hello.txt"`), or a Windows path. |
 | `413 Request Entity Too Large` with a small HTML page that ends in `nginx/1.30.6`, for a file of 2 MB | Nginx's default `client_max_body_size` is 1 MB, below the API's 5 MB limit. A JSON `413` (`file too large`) comes from the API instead. | `client_max_body_size 6m;` in `lb/nginx.conf`, then `docker compose exec -T lb nginx -s reload`. |
 | `SignatureDoesNotMatch` from the AWS CLI | The secret key used by the client is not the one the server was started with. | Use the same `S3_SECRET_KEY`. If you changed it in `.env`, run `docker compose up -d` again so `s3` restarts with the new value. |
