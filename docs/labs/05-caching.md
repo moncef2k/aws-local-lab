@@ -1,9 +1,7 @@
 # Lab 05 — Caching (ElastiCache)
 
 > **AWS equivalent:** Amazon ElastiCache (Redis OSS / Valkey), subnet groups, security groups  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 04](./04-database.md)  ·  **Reference solution:** commits `b382737` (step 15) and `c50f45d` (step 16) on `dev`
-
-> **Status:** in progress. Steps 15–16 are written; step 17 (the cache test) and the closing sections (5–11) come next.
+> **Builds on:** [Lab 04](./04-database.md)  ·  **Reference solution:** commits `b382737` (step 15), `c50f45d` (step 16) and `6b61ddb` (step 17) on `dev`
 
 ## 1. What you will learn
 - Explain what a **cache** is, what a **hit** and a **miss** are, and why a cache is allowed to forget.
@@ -528,5 +526,232 @@ make test                                 # add LB_HOST_PORT=8081 in front if po
 - Only `GET /notes/{id}` is cached. The list (`GET /notes`) is not: it changes with every create and delete, which would make invalidation much harder. Choosing *what* to cache is part of the design.
 - The header `X-Cache` and the log lines make the cache **observable**. In step 17 the test reads them to prove the behaviour; the same idea in production is the *cache hit ratio* metric in CloudWatch.
 
-## 5–11. To be completed in step 17
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 17).
+### Step 17 — The cache test
+**Why:** in step 16 you checked the cache by hand. A test script turns that check into something you can run in 20 seconds after **any** later change (a new route, a new Nginx rule, a Redis upgrade) and get a clear yes or no. Like `04_persistence.sh`, it tests the **behaviour** through the load balancer, not the internals.
+
+**Do it.** Create `tests/05_cache.sh` (`make test` runs every `tests/*.sh`, so nothing else needs to change):
+
+```bash
+#!/usr/bin/env bash
+# Lab 05 test: cache-aside on GET /notes/{id}. Checks the X-Cache header (MISS, HIT, MISS after an
+# update, 404 not cached), the TTL stored in Redis, the Redis password, and that the API keeps
+# working (X-Cache: BYPASS) while Redis is stopped.
+# Needs the stack to be up (make up). Takes about 20 seconds. The test note is deleted at the end.
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; fail=1; }
+
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+echo "Lab 05 - cache ($url)"
+
+# Value of the X-Cache header of GET /notes/<id> (empty if there is none), and the HTTP code.
+xcache() { curl -s -o /dev/null -D - --max-time 5 "$url/notes/$1" | tr -d '\r' | sed -n 's/^[Xx]-[Cc]ache: *//p'; }
+code_of() { curl -s -o /dev/null --max-time 5 -w '%{http_code}' "$url/notes/$1"; }
+# redis-cli inside the redis container, authenticated with the password the container already has.
+rcli() { docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli "$@"' sh "$@" 2>/dev/null | tr -d '\r'; }
+
+# 1. Create a note.
+title="cache-test-$(date +%s)"
+resp=$(curl -s --max-time 5 -X POST "$url/notes" -H 'Content-Type: application/json' \
+  -d "{\"title\":\"$title\",\"body\":\"v1\"}")
+id=$(echo "$resp" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+if [ -z "$id" ]; then
+  echo "  FAIL  could not create a note: $resp"
+  exit 1
+fi
+cleanup() {
+  docker compose start redis >/dev/null 2>&1   # in case the test stopped it and failed half way
+  curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id"
+}
+trap cleanup EXIT
+ok "created note $id"
+
+# 2. The first read goes to the database (MISS), the next ones are served by Redis (HIT).
+#    The load balancer spreads the requests over 3 replicas: a HIT on all of them proves the
+#    cache is shared, not kept inside one replica.
+first=$(xcache "$id")
+[ "$first" = "MISS" ] && ok "first read: X-Cache: MISS" || bad "first read: expected MISS, got '${first:-no header}'"
+hits=0
+for _ in 1 2 3 4 5 6; do [ "$(xcache "$id")" = "HIT" ] && hits=$((hits + 1)); done
+[ "$hits" = 6 ] && ok "next 6 reads (different replicas): all X-Cache: HIT" || bad "next 6 reads: only $hits of 6 were HIT"
+
+# 3. The entry has a time to live in Redis.
+ttl=$(rcli ttl "note:$id")
+max=$(docker compose exec -T api printenv CACHE_TTL_SECONDS 2>/dev/null | tr -d '\r')   # the TTL the API really uses
+if [ -n "$ttl" ] && [ "$ttl" -gt 0 ] 2>/dev/null && [ "$ttl" -le "${max:-60}" ]; then
+  ok "key note:$id has a TTL of ${ttl}s (it expires by itself)"
+else
+  bad "key note:$id: unexpected TTL '${ttl:-none}'"
+fi
+
+# 4. An update removes the entry: the next read is a MISS and shows the new text, then HIT again.
+curl -s -o /dev/null --max-time 5 -X PUT "$url/notes/$id" -H 'Content-Type: application/json' \
+  -d "{\"title\":\"$title\",\"body\":\"v2\"}"
+after=$(xcache "$id")
+[ "$after" = "MISS" ] && ok "read after PUT: X-Cache: MISS (entry was invalidated)" || bad "read after PUT: expected MISS, got '${after:-no header}'"
+if curl -s --max-time 5 "$url/notes/$id" | grep -q '"body":"v2"'; then ok "the cached copy holds the new body (v2)"; else bad "the cached copy is stale"; fi
+
+# 5. A missing note is never cached.
+curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id"
+[ "$(code_of "$id")" = "404" ] && ok "deleted note: 404 (not served from the cache)" || bad "deleted note: expected 404"
+[ "$(rcli exists "note:$id")" = "0" ] && ok "no cache entry left for the deleted note" || bad "a cache entry is left for the deleted note"
+
+# 6. Redis asks for a password.
+noauth=$(docker compose exec -T redis redis-cli ping 2>&1 | tr -d '\r')
+echo "$noauth" | grep -q 'NOAUTH' && ok "redis-cli without a password is refused (NOAUTH)" || bad "redis answered without a password: $noauth"
+
+# 7. Redis down is a slower API, not a broken one: reads still work and say BYPASS.
+resp=$(curl -s --max-time 5 -X POST "$url/notes" -H 'Content-Type: application/json' -d "{\"title\":\"$title-bypass\"}")
+id2=$(echo "$resp" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+if [ -n "$id2" ]; then
+  docker compose stop redis >/dev/null 2>&1
+  b=$(xcache "$id2"); c=$(code_of "$id2")
+  [ "$b" = "BYPASS" ] && [ "$c" = "200" ] && ok "Redis stopped: HTTP 200 with X-Cache: BYPASS" || bad "Redis stopped: expected 200 + BYPASS, got $c + '${b:-no header}'"
+  docker compose start redis >/dev/null 2>&1
+  for _ in $(seq 20); do [ "$(rcli ping)" = "PONG" ] && break; sleep 1; done
+  [ "$(rcli ping)" = "PONG" ] && ok "Redis started again" || bad "Redis did not come back"
+  curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id2"
+else
+  bad "could not create the note for the BYPASS check: $resp"
+fi
+
+[ "$fail" = 0 ] && echo "05_cache: all checks passed" || echo "05_cache: FAILED"
+exit "$fail"
+```
+
+| Part | What it does | If you change or remove it |
+|---|---|---|
+| `addr=$(docker compose port lb 80)` and `url=...` | Finds the address the load balancer really publishes (80, or 8081 if you changed `LB_HOST_PORT`), so the test works on any machine. | A fixed `localhost:80` fails where port 80 is busy. |
+| `xcache()` | Calls `GET /notes/<id>`, throws the body away (`-o /dev/null`), dumps the headers (`-D -`), removes the carriage returns and prints only the value of `X-Cache`. The pattern `[Xx]-[Cc]ache` accepts any letter case (header names are case-insensitive). | Reading the body instead would not tell HIT from MISS: both return the same JSON. |
+| `rcli()` | Runs `redis-cli` **inside** the redis container with the password the container already has (`REDISCLI_AUTH`), so the test never needs your `.env`. | Calling `redis-cli` from the host fails: there is no published port (step 15). |
+| `trap cleanup EXIT` | Whatever happens (a failed check, Ctrl+C), the test restarts Redis and deletes its note. | Without it a test that fails half way could leave Redis stopped, and the next test would fail for the wrong reason. |
+| Step 2: one `MISS`, then six reads that must all be `HIT` | Six reads are spread by the load balancer over the three replicas. All `HIT` means the copy is **shared** (it lives in Redis, not in one replica's memory). | With a per-replica cache (a Python dict) some reads would be `MISS`. |
+| Step 3: `ttl` between 1 and `CACHE_TTL_SECONDS` | The copy has an expiry that is not longer than the configured one. The limit is read from the API container, so it follows your `.env`. `-1` would mean "no expiry". | A key without `ex=` would stay for ever and could be stale for ever. |
+| Step 4: `PUT`, then `MISS`, then the new body | The write invalidated the copy, and the refill holds the new text. | A missing `forget()` shows up here as `HIT` with the old body. |
+| Step 5: `DELETE`, then `404` and `exists` = `0` | A removed note is gone from the cache as well, and a `404` is never stored. | Caching "not found" answers would hide a note that is created a second later. |
+| Step 6: `redis-cli ping` without a password | The answer must contain `NOAUTH`. | If Redis answers `PONG`, the cache is open to every container on `private`. |
+| Step 7: `docker compose stop redis`, then `200` + `BYPASS` | The API must survive the loss of the cache. Then the test starts Redis and waits for `PONG`. | A cache that is a hard dependency would make this a `500`. |
+
+**Run it:**
+```bash
+bash tests/05_cache.sh                 # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+Lab 05 - cache (http://127.0.0.1:8081)
+  PASS  created note 9
+  PASS  first read: X-Cache: MISS
+  PASS  next 6 reads (different replicas): all X-Cache: HIT
+  PASS  key note:9 has a TTL of 59s (it expires by itself)
+  PASS  read after PUT: X-Cache: MISS (entry was invalidated)
+  PASS  the cached copy holds the new body (v2)
+  PASS  deleted note: 404 (not served from the cache)
+  PASS  no cache entry left for the deleted note
+  PASS  redis-cli without a password is refused (NOAUTH)
+  PASS  Redis stopped: HTTP 200 with X-Cache: BYPASS
+  PASS  Redis started again
+05_cache: all checks passed
+```
+Every line is a promise from the theory section turned into a check. The exit code is `0` when all pass and `1` otherwise, which is what `make test` looks at.
+
+**The whole suite:**
+```bash
+make test                              # add LB_HOST_PORT=8081 in front if port 80 is busy
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+== tests/05_cache.sh
+05_cache: all checks passed
+```
+(Trimmed to the summary lines; `make` exited with code 0. `04_persistence.sh` runs `docker compose down` and `up`, so the suite restarts the whole stack in the middle.)
+
+**What just happened:**
+- The lab gained its fifth executable check. Together the five scripts prove: traffic is balanced, a dead replica does not hurt, the private side is unreachable from the host, data survives a restart, and the cache is shared, expires, is invalidated, is password protected, and is optional.
+- The test is **deterministic**: it creates its own note (named with the time, so two runs never clash) and removes it, and it never asserts on timings, only on the header and on Redis's own answers.
+- It deliberately **stops Redis**. That is the one place where a test touches the shared stack, so the `trap` restarts the cache even when the test fails.
+
+## 5. Verify it works
+With the lab up (`make up`; if port 80 is busy on your machine use `LB_HOST_PORT=8081 make up` and add the same prefix to the commands below):
+```bash
+make test
+```
+All five scripts must print `all checks passed`, and `make` must exit with code 0. To look by hand as well:
+```bash
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'                                                       # api x3, lb, postgres, redis: healthy
+curl -si -X POST localhost/notes -H 'Content-Type: application/json' -d '{"title":"hello"}' | tail -1                # create a note, note its id
+curl -si localhost/notes/<id> | grep -i x-cache; curl -si localhost/notes/<id> | grep -i x-cache                      # MISS, then HIT
+docker compose exec -T redis redis-cli ping                                                                         # NOAUTH Authentication required.
+docker compose port redis 6379                                                                                      # prints :0, not published
+```
+(In PowerShell, write `curl.exe`, and put the JSON in a file or escape the quotes.)
+
+## 6. Troubleshooting
+| Symptom | Cause | Fix |
+|---|---|---|
+| `required variable REDIS_PASSWORD is missing a value: set REDIS_PASSWORD in .env (see .env.example)` on **any** `docker compose` command | The Redis password has no default on purpose, and Compose checks the whole file, so every command needs it (also `make test`). | Add a `REDIS_PASSWORD=...` line to `.env` (section 3). Like `POSTGRES_PASSWORD`, it must be a fake local value. |
+| `no such manifest: docker.io/library/redis:8.10.3-alpine3.24` (from `docker manifest inspect`; `docker compose pull` fails the same way) | That tag does not exist: Redis 8.10.3 is published for Alpine 3.23, not 3.24. Guessing the next tag number is a trap: only the publisher decides which tags exist. | Use the tag that exists: `redis:8.10.3-alpine3.23`. Check a tag **before** pinning it: `docker manifest inspect <image>:<tag>` prints a manifest if it exists. |
+| `Bind for 0.0.0.0:80 failed: port is already allocated` | Another project already publishes port 80 on your machine. | Set `LB_HOST_PORT=8081` in `.env` (or in front of the command) and use `localhost:8081`. Same as [Lab 04](./04-database.md). |
+| After `docker compose stop redis`, the API answers with `X-Cache: BYPASS` and the log says `Temporary failure in name resolution` | **Expected:** Docker's DNS stops answering for a stopped container, so the name `redis` cannot be resolved. The API is designed to survive this. | Start the cache again: `docker compose start redis`. It comes back empty, so the first reads are `MISS`. |
+| A note you changed with `psql` still shows the old text | The cache holds a copy and nobody told it about the change (only the API invalidates). | Wait for the TTL (60 s), or delete the key: `redis-cli del note:<id>` inside the container. Make changes through the API. |
+
+## 7. Going to real AWS
+- **What changes:** an **ElastiCache** replication group (Redis OSS or Valkey) in **private subnets** chosen with a **cache subnet group**. Its **security group** allows port 6379 **only from the API's security group**. You pick a **node type** (memory), the number of **replicas** and, for failover, **Multi-AZ**. The application connects to the group's **primary endpoint** (a DNS name that AWS repoints when a node fails) and the **reader endpoint** for reads.
+- **Authentication and encryption:** switch on **in-transit encryption (TLS)** and **AUTH** (a token or, better, Redis ACL users with IAM authentication), and **encryption at rest** if the cache holds anything sensitive. In the app the URL scheme becomes `rediss://` (two `s`: TLS). Secrets live in **Secrets Manager**, not in a file.
+- **Parameter group:** the `maxmemory-policy` we pass on the command line is a **parameter** here. AWS's default parameter groups usually set `volatile-lru` (evict only keys that have a TTL) rather than our `allkeys-lru`: check the value in your parameter group and choose it on purpose.
+- **Cluster mode:** big data sets are split across **shards** (cluster mode enabled); the client must then be cluster-aware. This lab uses one node, which is the simpler "cluster mode disabled" shape.
+- **What this lab does not simulate:** replicas and failover, Multi-AZ, backups and snapshots (we turned persistence off), TLS, ACL users, node sizing and the network limits of a node type, maintenance windows, and CloudWatch metrics such as `CacheHitRate` and `Evictions`. A single `redis` container is a single point of failure, and so is a single node.
+- **Rough cost:** ElastiCache bills per **node-hour** of the node type (more nodes with replicas cost more), plus backup storage beyond the free allowance, plus data transfer between zones. A small node costs in the range of tens of USD per month (see the [ElastiCache pricing page](https://aws.amazon.com/elasticache/pricing/); prices vary by region and change). A **serverless** option bills for data stored and requests. Delete test caches: they bill while they exist.
+
+## 8. Clean up
+```bash
+make down          # removes the containers and networks; the cache is empty again when you come back
+make up            # starts again: the notes are in Postgres (the volume is kept), the cache starts empty
+make clean         # deletes the Postgres volume too (ALL lab data); it asks you to type "yes" first - run it yourself
+```
+Redis has **no volume** (step 15), so any `down` empties the cache, with or without `-v`: that is by design, and why no data may live only in Redis. To empty the cache without stopping anything: `docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli flushall'`.
+
+## 9. Check your understanding
+1. In cache-aside, what does the application do on a **miss**, and what does it do after a **write**? Why does it delete the cached copy instead of updating it?
+2. Why must every cached note have a **TTL**, even though the API already invalidates the copy on `PUT` and `DELETE`?
+3. The test sends six reads through three API replicas and expects six `HIT`s. What does that prove, and what would a per-replica cache (a Python dictionary) have shown?
+4. Why does `redis` have `--maxmemory-policy allkeys-lru` and no `--appendonly yes`? What would each change cost you?
+5. The API answers `200` with `X-Cache: BYPASS` while Redis is stopped. Why was the cache code written this way, and what is the price?
+
+<details><summary>Answers</summary>
+
+1. On a **miss** it reads the database, stores the answer in the cache **with a TTL**, and returns it. After a **write** it saves to the database first, then **deletes** the cached copy. Deleting is simpler and safer than updating: the next read refills the cache from the database, the single source of truth, so there is no second code path that could store a different value.
+2. Invalidation only covers changes made **through the API**. Someone editing the database with `psql` (Experiment A), a failed delete while Redis was unreachable, or a bug can all leave a wrong copy. The TTL is the safety net: nothing stays wrong for longer than the TTL.
+3. It proves the copy is **shared**: it lives in Redis, reachable by all replicas. A per-replica dictionary would give a `MISS` the first time **each** replica sees the note (about three `MISS`es), and a stale copy in each replica after an update.
+4. `allkeys-lru` makes a full cache **evict** the least recently used key instead of refusing writes (the default `noeviction` fails writes). Turning on `appendonly` would write every change to disk: slower and useless for copies that can be rebuilt from Postgres. The price of no persistence is an **empty cache after a restart** (a burst of misses).
+5. The cache is an accelerator, not a dependency: if it fails the system must be slower, not down. The price: while Redis is down every read hits Postgres (more load, slower), and a `PUT` during the outage cannot delete the cached copy, so it may stay stale until its TTL ends if Redis comes back with its data.
+
+</details>
+
+## 10. Exercises (optional)
+- Change the TTL: add `CACHE_TTL_SECONDS=5` to `.env`, run `docker compose up -d`, read a note, wait 6 seconds, read again. What does `X-Cache` say, and what does `redis-cli ttl note:<id>` show in between? Then run `tests/05_cache.sh` and see that the TTL check follows your value.
+- Make the test catch a bug: comment out `forget(note_id)` in `update_note`, rebuild (`docker compose up -d --build`), run `tests/05_cache.sh`. Which line fails, and what does the failure message say? Put the line back.
+- Cache the list: write `GET /notes` with the same pattern under the key `notes:all`. Which writes must now invalidate it (`POST`, `PUT`, `DELETE`)? Is it still worth it?
+- Watch the hit ratio: `redis-cli info stats | grep keyspace` shows `keyspace_hits` and `keyspace_misses`. Make 100 reads of one note and compute hits ÷ (hits + misses). This is the number CloudWatch graphs as `CacheHitRate`.
+- Try the other eviction policies: set `--maxmemory-policy noeviction` in a copy of the compose file (different project name and `LB_HOST_PORT`), repeat the benchmark of step 15 (check 6) and see what Redis answers when it is full.
+
+## 11. Further reading
+- [Amazon ElastiCache: what it is](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/WhatIs.html) and [caching strategies (lazy loading, write-through, TTL)](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html) (AWS)
+- [Redis key eviction](https://redis.io/docs/latest/develop/reference/eviction/) and [the `EXPIRE` command](https://redis.io/docs/latest/commands/expire/) (Redis)
+- [redis-py documentation](https://redis-py.readthedocs.io/en/stable/) (Python client)
+- [HTTP caching and the `X-Cache` idea in CDNs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching) (MDN)
+- [Docker Compose: `tmpfs`](https://docs.docker.com/reference/compose-file/services/#tmpfs) (Docker)

@@ -35,6 +35,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Eviction (LRU)** | What a full cache does to make room: it deletes entries. **LRU** (least recently used) deletes the ones unused the longest. | AWS: ElastiCache parameter `maxmemory-policy` · Local: `--maxmemory-policy allkeys-lru` | 05 |
 | **Failover** | Continuing to serve requests, on the remaining copies, when one copy fails. | AWS: ALB + several targets · Local: Nginx `proxy_next_upstream` | 02 |
 | **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
+| **Graceful degradation** | Designing a system so that when an optional part fails it gets slower or simpler instead of failing completely. Here: with Redis down the API answers from the database and marks the reply `X-Cache: BYPASS`. | Local: `read_note` in `api/main.py` | 05 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
 | **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
