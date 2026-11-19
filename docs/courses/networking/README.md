@@ -12,7 +12,7 @@ Back to the [course index](../README.md).
 |---|---|---|---|
 | 01 | [IP addresses, ports, localhost and TCP](./01-ip-ports-tcp.md) | ✅ written | Lab 01, step 2 |
 | 02 | [DNS](./02-dns.md) | ✅ written | Lab 02, step 4 |
-| 03 | HTTP requests, responses and status codes | ⬜ planned | Lab 01, step 2 |
+| 03 | [HTTP requests, responses and status codes](./03-http.md) | ✅ written | Lab 01, step 2 |
 | 04 | Proxies: forward vs reverse | ⬜ planned | Lab 02, step 4 |
 | 05 | NAT and port forwarding | ⬜ planned | Lab 01, step 3 |
 | 06 | [Subnets and CIDR](./06-subnets-and-cidr.md) | ✅ written | Lab 03, step 8 |
