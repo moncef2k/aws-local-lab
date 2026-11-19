@@ -37,6 +37,7 @@ fi
 cleanup() {
   docker compose start redis >/dev/null 2>&1   # in case the test stopped it and failed half way
   curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id"
+  [ -n "${id2:-}" ] && curl -s -o /dev/null --max-time 5 -X DELETE "$url/notes/$id2"   # the BYPASS note (step 7)
 }
 trap cleanup EXIT
 ok "created note $id"
