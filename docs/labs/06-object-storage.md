@@ -1,9 +1,9 @@
 # Lab 06 — Object storage (S3)
 
 > **AWS equivalent:** Amazon S3 (buckets, objects, access keys, presigned URLs)  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commits `0cc9b19` (step 18) and `b2872f7` (step 19) on `dev`
+> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commits `0cc9b19` (step 18), `b2872f7` (step 19) and `4d7933c` (step 20) on `dev`
 
-> **Status:** in progress. Steps 18–19 are written. Steps 20–21 (public S3 endpoint, storage test) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 18–20 are written. Step 21 (storage test) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain what **object storage** is, and how it differs from a disk and from a database.
@@ -66,6 +66,7 @@ flowchart LR
     init["s3-init<br/>(one-shot job)"]
   end
   lb --> api
+  lb -->|"step 20: Host s3.localhost (GET/HEAD only)"| s3
   api -. "step 19: upload / download" .-> s3
   init -->|"create the bucket, then exit"| s3
   you -. "no route, no port: blocked" .-> s3
@@ -412,7 +413,7 @@ curl -s -w '\n[HTTP %{http_code}]\n' -F "file=@hello.txt;type=text/plain" localh
 | `X-Amz-SignedHeaders=host` | the signature covers the `Host` header |
 | `X-Amz-Signature=...` | the signature itself |
 
-The host in the URL is `s3`, a name that only exists **inside** Docker. So this link works from other containers but not yet from your browser: making it work from the host is step 20.
+The host in the URL is `s3`, a name that only exists **inside** Docker. So this link works from other containers but not yet from your browser: making it work from the host is [step 20](#step-20--a-public-s3-address-s3localhost-through-the-load-balancer).
 
 **Check 2 — the link really downloads the object (from inside the private network), and the bytes match.** A throw-away container on the lab network fetches the URL; for a binary file the SHA-256 checksums are compared:
 ```bash
@@ -509,8 +510,188 @@ make test                                 # add LB_HOST_PORT=8081 in front if po
 - You generated a **presigned URL** and saw that it carries its own proof (the signature) and its own deadline (`X-Amz-Expires`); the secret key stays inside the API.
 - Uploads are **untrusted input**: the size is capped (twice, at Nginx and in the API), the file name is cleaned and the key is generated, not chosen by the client.
 - Storage is a **soft dependency of one route**: if it fails, `POST /upload` answers `502` and everything else keeps working.
-- Two limits of this step, on purpose left for later: FastAPI has already received (and, for big bodies, spooled to a temporary file) the whole upload **before** the route runs, so the `read(MAX + 1)` check protects the object store but not the API's memory or disk; the **Nginx 6 MB limit** is the real cap on how much one request can bring. And the client's `Content-Type` is stored as sent, so a file declared `text/html` would be served as HTML: before step 20 lets browsers open these URLs, consider forcing a download or an allow-list of types.
-- The URL is signed for the host `s3`, so only containers can use it. Step 20 fixes that.
+- Two limits of this step, on purpose left for later: FastAPI has already received (and, for big bodies, spooled to a temporary file) the whole upload **before** the route runs, so the `read(MAX + 1)` check protects the object store but not the API's memory or disk; the **Nginx 6 MB limit** is the real cap on how much one request can bring. And the client's `Content-Type` is stored as sent, so a file declared `text/html` would be served as HTML: step 20 now lets browsers open these URLs, so before exposing this beyond your laptop, consider forcing a download (`ResponseContentDisposition=attachment` when signing) or an allow-list of types.
+- The URL is signed for the host `s3`, so only containers can use it. [Step 20](#step-20--a-public-s3-address-s3localhost-through-the-load-balancer) fixes that.
+
+### Step 20 — A public S3 address, `s3.localhost`, through the load balancer
+**Why:** the link from step 19 starts with `http://s3:8333/...`. The name `s3` only exists inside Docker, so your browser cannot open it. In AWS the same problem does not exist: the bucket is reachable at a public name (`<bucket>.s3.amazonaws.com`) that anyone can resolve, and the signature is made for that name. Here we give the object store a **second, public name** that goes through the load balancer, and we make the API sign links for *that* name.
+
+**Two ideas first.**
+1. **Name-based routing.** One Nginx on one port can serve several "sites": it reads the `Host` header of each request (see [Networking 03](../courses/networking/03-http.md)) and picks the `server` block whose `server_name` matches. `s3.localhost` goes to the object store, everything else goes to the API. (`*.localhost` names always point at your own machine, so there is nothing to add to a hosts file; `curl` resolved it on its own here.)
+2. **A presigned URL signs the host.** In step 19 you saw `X-Amz-SignedHeaders=host`: the signature is computed over the `Host` the client will send. If the API signs for `s3:8333` and the client then calls `s3.localhost`, the server recomputes the signature with a different host and rejects it. So the API must sign for the address the *client* will use, and Nginx must pass the `Host` header on **unchanged**.
+
+```mermaid
+sequenceDiagram
+  participant B as You (curl / browser)
+  participant LB as lb (Nginx)
+  participant API as api
+  participant S3 as s3 (SeaweedFS)
+  B->>LB: POST /upload (Host: localhost)
+  LB->>API: forwarded (default_server block)
+  API->>S3: put_object via http://s3:8333 (inside Docker)
+  API-->>B: key + URL signed for http://s3.localhost
+  B->>LB: GET /uploads/... (Host: s3.localhost)
+  LB->>S3: same request, Host unchanged (s3.localhost block)
+  S3-->>B: the bytes (signature checked against the Host)
+```
+
+**Do it.** Three small changes.
+
+1. Add the object store as an upstream and a second `server` block, in `lb/nginx.conf` (inside `http { ... }`, before the existing `server`), and mark the existing block `default_server`:
+   ```nginx
+       # The object store, reachable by service name like the API (same Docker DNS trick).
+       upstream s3 {
+           zone s3 64k;
+           resolver 127.0.0.11 valid=5s;
+           server s3:8333 resolve;
+       }
+
+       # Public S3 endpoint: requests for the host name s3.localhost go to the object store, so that a
+       # presigned URL works from your machine. Nginx picks the server block by the Host header.
+       server {
+           listen 80;
+           server_name s3.localhost;
+
+           location / {
+               # Read-only door: presigned download links only need GET and HEAD.
+               limit_except GET HEAD {
+                   deny all;
+               }
+               proxy_pass http://s3;
+               # Keep the Host header exactly as the client sent it (with its port, if any): the
+               # signature of a presigned URL covers it, and the store refuses the request if it changes.
+               proxy_set_header Host $http_host;
+           }
+       }
+
+       server {
+           # default_server: every Host that is not s3.localhost (localhost, 127.0.0.1, ...) lands here.
+           listen 80 default_server;
+           # ... rest of the API server block unchanged ...
+   ```
+
+2. Give the API the public address, in `docker-compose.yml` (`api` service, right under `S3_ENDPOINT_URL`):
+   ```yaml
+         # The address clients outside Docker use (through the load balancer): presigned links are signed
+         # for it. If you change LB_HOST_PORT from 80, add the port here, for example http://s3.localhost:8080.
+         S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://s3.localhost}
+   ```
+
+3. Sign with a second client, in `api/main.py`. The client of step 19 becomes a small function used twice (replace the `s3 = boto3.client(...)` block):
+   ```python
+   S3_BUCKET = os.environ["S3_BUCKET"]
+
+
+   def make_s3_client(endpoint_url: str):
+       return boto3.client(
+           "s3",
+           endpoint_url=endpoint_url,
+           aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+           aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+           region_name="us-east-1",
+           config=Config(
+               signature_version="s3v4",
+               s3={"addressing_style": "path"},
+               connect_timeout=2,
+               read_timeout=5,
+               retries={"max_attempts": 1},
+           ),
+       )
+
+
+   # Two addresses for the same store. The API reaches it inside the private network (http://s3:8333),
+   # but a browser on your machine cannot resolve "s3": the link we hand out must use the public name
+   # (http://s3.localhost, served by the load balancer). A presigned URL signs the host name, so it has
+   # to be created for the address the client will really call. Signing is local maths: no network call.
+   s3 = make_s3_client(os.environ["S3_ENDPOINT_URL"])
+   s3_public = make_s3_client(os.environ.get("S3_PUBLIC_ENDPOINT_URL", os.environ["S3_ENDPOINT_URL"]))
+   ```
+   In the `upload` route only the signing line changes: `url = s3_public.generate_presigned_url(` (the `put_object` above it still uses `s3`).
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `upstream s3 { ... server s3:8333 resolve; }` | The "target group" of the object store, found by Docker DNS like `api`. | Without it, `proxy_pass` has nothing to point at. |
+| `server_name s3.localhost;` | This block answers only requests whose `Host` is `s3.localhost`. | Remove it and this block (the first in the file) would also catch requests meant for the API. |
+| `limit_except GET HEAD { deny all; }` | Every method except GET and HEAD gets `403`: this public door is download-only. | Without it, other methods (`PUT`, `DELETE`, ...) would be passed on to the store, which would then judge them by their signature alone. |
+| `proxy_set_header Host $http_host;` | Sends the request on with the `Host` exactly as received (including `:8088` when there is a port). | With the default (the upstream's own address, `s3:8333`) the store sees another host than the signed one: `SignatureDoesNotMatch`. `$host` would also break it when a port is used: it drops the port. |
+| `listen 80 default_server;` | Says which block serves requests that match no `server_name`. | Without it the **first** block of the file is the default: see the first row of the Troubleshooting table below. |
+| `S3_PUBLIC_ENDPOINT_URL` | The address put in the links; defaults to `http://s3.localhost`. | If it does not match what the client really types (port included), the link points to a closed port or fails the signature. |
+| `make_s3_client(...)` and the two clients | One client talks to the store (`s3`), one only signs (`s3_public`). | With a single client on `http://s3:8333`, the links are the unusable ones of step 19. |
+
+**Rebuild and restart.** On this machine port 80 was taken by another project's container, and 8080 refused the bind (see Troubleshooting), so the checks below run on **8088**, and the public address says so:
+```bash
+export LB_HOST_PORT=8088 S3_PUBLIC_ENDPOINT_URL=http://s3.localhost:8088   # leave both out if port 80 is free
+docker compose up -d --build --wait
+docker compose exec lb nginx -t
+```
+```text
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+```
+(`nginx -t` checks the file without applying it. After a change to `nginx.conf` alone, `docker compose restart lb` applies it.)
+
+**Check 1 — the step's check: upload, then download the presigned URL from the host, and compare the bytes.**
+```bash
+head -c 200000 /dev/urandom > blob.bin                    # random bytes: no way to match by luck
+sha256sum blob.bin | cut -c1-16
+curl -s -X POST -F "file=@blob.bin;type=application/octet-stream" localhost:8088/upload -o up.json -w 'upload: %{http_code}\n'
+# put the "url" field of up.json in $URL, then:
+curl -s -o down.bin -w '%{http_code}, %{size_download} bytes\n' "$URL"
+sha256sum down.bin | cut -c1-16
+cmp blob.bin down.bin && echo "bytes identical"
+```
+```text
+cc36db0034aab472
+upload: 201
+{"key":"originals/5100e59fa6c440c7a79a6e68f39bac20-blob.bin","size":200000,"content_type":"application/octet-stream","url":"http://s3.localhost:8088/uploads/originals/5100e59fa6c440c7a79a6e68f39bac20-blob.bin?<signature params>" ...}
+200, 200000 bytes
+cc36db0034aab472
+bytes identical
+```
+(The `url` is shortened here; its query string holds the six `X-Amz-*` parameters of step 19.) Compared with step 19, the host is now `s3.localhost:8088`, a name your machine can reach: the request goes *host → Nginx → s3* and the object comes back byte for byte (the two checksums are equal and `cmp` found no difference). The secret key never left the API.
+
+**Check 2 — the signature still protects the object, through the new door.**
+```bash
+curl -s -w ' -> %{http_code}\n' "${URL%?}0"                 # last character of the signature changed
+curl -s -o /dev/null -w '%{http_code}\n' "${URL%%\?*}"       # no query string: no signature
+curl -s -o /dev/null -w '%{http_code}\n' -X PUT "$URL"       # a method other than GET / HEAD
+```
+```text
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match the signature you provided. Check your key and signing method.</Message><Resource>/uploads/originals/5100e59fa6c440c7a79a6e68f39bac20-blob.bin</Resource><Reques ...
+403
+403
+```
+A modified signature is rejected by the store (`SignatureDoesNotMatch`), the bare object address too (`403`), and a `PUT` is refused by **Nginx** itself (`403` from `limit_except`: it never reaches the store). The first output is cut after 300 characters.
+
+**Check 3 — why the signing address matters.** Sign a link for the *internal* address, as step 19 did, and send it to the public door:
+```bash
+docker compose exec -T api python -c "import main; print(main.s3.generate_presigned_url('get_object', Params={'Bucket':'uploads','Key':'<the key>'}, ExpiresIn=60))"
+# take that URL, replace "s3:8333" by "s3.localhost:8088" and curl it
+```
+```text
+internal URL host: s3:8333
+<Code>SignatureDoesNotMatch</Code>
+```
+(The first line was printed by a small `echo` of the URL's host.) Same object, same secret, same expiry, and a valid signature for the host `s3:8333`: it is still rejected, because the request arrives with another `Host`. That is the whole point of `S3_PUBLIC_ENDPOINT_URL`.
+
+**Regression check — the rest of the lab still works:**
+```bash
+make test            # with LB_HOST_PORT=8088 exported
+```
+```text
+03_network_isolation: all checks passed
+04_persistence: all checks passed
+05_cache: all checks passed
+```
+(Only the end of the `make test` output was kept, so `tests/02_load_balancing.sh` and `tests/02_failover.sh` were also run on their own: both ended with `all checks passed`. Requests with the default `Host` still reach the API: that is what `default_server` is for.)
+
+**What just happened:**
+- The object store now has a **public address**, `s3.localhost`, in front of which sits the same load balancer as the API. One entry point, two names: the `Host` header decides.
+- A presigned URL is only valid for the **host it was signed for**. The API keeps two views of the store: an internal one to read and write, a public one to sign.
+- The public door is **read-only** (`GET`/`HEAD`) and every link still carries its own signature and deadline.
+- Compare with AWS: there is nothing to configure there, because `s3.amazonaws.com` is already public DNS; the lab has to recreate a public name and a route to get the same effect.
+- Still open for step 21: an automatic test (`tests/06_storage.sh`) that does what Check 1 does by hand.
 
 ## 5–11. To be completed at the end of Lab 06
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 21). The problems met so far:
@@ -524,3 +705,8 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `curl: (26)` and `HTTP 000` when uploading with `-F "file=@/tmp/hello.txt"` from Git Bash | The Windows `curl.exe` cannot read the Git Bash path `/tmp/...`: it is not a Windows path. | Run `curl` from the folder that holds the file and use a relative name (`-F "file=@hello.txt"`), or a Windows path. |
 | `413 Request Entity Too Large` with a small HTML page that ends in `nginx/1.30.6`, for a file of 2 MB | Nginx's default `client_max_body_size` is 1 MB, below the API's 5 MB limit. A JSON `413` (`file too large`) comes from the API instead. | `client_max_body_size 6m;` in `lb/nginx.conf`, then `docker compose exec -T lb nginx -s reload`. |
 | `SignatureDoesNotMatch` from the AWS CLI | The secret key used by the client is not the one the server was started with. | Use the same `S3_SECRET_KEY`. If you changed it in `.env`, run `docker compose up -d` again so `s3` restarts with the new value. |
+| `lb` stays `unhealthy` and `curl localhost:<port>/health` answers `403 Forbidden` right after adding the `s3.localhost` block | Nginx uses the **first** `server` block of a port as the default for unknown `Host` values. The new `s3.localhost` block was written first, so `localhost` and `127.0.0.1` (the health check) were sent to it and refused. | Mark the API block `listen 80 default_server;`, then `docker compose restart lb`. |
+| `Bind for 0.0.0.0:80 failed: port is already allocated` when starting `lb` | Another container (here `docker-nginx-1`, from another Compose project that restarted with Docker Desktop) already publishes port 80. | Pick another port: `LB_HOST_PORT=8088`, and put it in the public address too: `S3_PUBLIC_ENDPOINT_URL=http://s3.localhost:8088`. Do not stop projects that are not yours. |
+| `ports are not available: ... 127.0.0.1:8080 ... bind: An attempt was made to access a socket in a way forbidden by its access permissions` | On Windows a port can be reserved or used by another program; the cause of the refusal of 8080 here was not investigated. | Choose another free port (8088 worked). `netsh int ipv4 show excludedportrange protocol=tcp` lists the ranges Windows reserves. |
+| `SignatureDoesNotMatch` when fetching a presigned URL through `s3.localhost` | The link was signed for another host (for example `s3:8333`), or the port is missing from `S3_PUBLIC_ENDPOINT_URL`: the signature covers the `Host` header. | Make `S3_PUBLIC_ENDPOINT_URL` equal to what the client types, port included, and keep `proxy_set_header Host $http_host;`. |
+| `error during connect: ... open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running, so the Docker engine is not reachable. | Start Docker Desktop and wait until `docker version` shows a Server section. |

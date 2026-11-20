@@ -52,6 +52,11 @@ deregister targets automatically as tasks start and stop.
 | Targets register themselves | ECS registers each task | Docker DNS: the name `api` resolves to every container of the `api` service |
 | Health check | active (the ALB calls `/health`) | step 6; open-source Nginx only does *passive* checks (it notices failures on real requests) |
 
+> **Later change (Lab 06, step 20):** the load balancer gets a second `server` block that routes the host name
+> `s3.localhost` to the object store, like an ALB listener rule that matches on the host header. The block described
+> here is then marked `listen 80 default_server;` so that every other host name still reaches the API. See
+> [Lab 06, step 20](./06-object-storage.md#step-20--a-public-s3-address-s3localhost-through-the-load-balancer).
+
 Docker gives every container on a network a DNS entry, and **Docker's built-in DNS server (`127.0.0.11`)** answers
 `api` with the addresses of the running `api` containers. Nginx normally resolves a name only once, when it starts,
 and then keeps that address forever. A container that restarts gets a *new* address, so Nginx would keep sending
