@@ -381,3 +381,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 18 | Networking 02 - DNS | AWSLAB-101 | `f370dfc` | PASS |
 | step 19 | FastAPI 03 - Path, query and body parameters | AWSLAB-102 | `806f732` (its README and plan edits landed in `2a861c8`) | PASS WITH NOTES, notes fixed |
 | step 19 | Networking 03 - HTTP requests, responses and status codes | AWSLAB-103 | `2a861c8` | PASS WITH NOTES, notes fixed |
+| step 20 | FastAPI 04 - Pydantic models and validation | AWSLAB-104 | `bd8715c` (+ fix `2b27971`) | PASS WITH NOTES, notes fixed (broken link; 321 lines, accepted) |
+| step 20 | Networking 04 - Proxies: forward vs reverse | AWSLAB-105 | `9b315e1` | PASS |
