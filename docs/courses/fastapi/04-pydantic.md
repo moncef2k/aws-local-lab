@@ -22,7 +22,7 @@
 | **Schema** | A machine-readable description of a model (its fields, types and rules), written in the JSON Schema format. FastAPI publishes it in `/openapi.json`. |
 | **Default value** | What a field takes when the client leaves it out: `body: str = ""`. A field with no default is **required**. |
 | **`response_model`** | A model given to a route to say: "whatever the function returns, send only these fields, in this shape". |
-| **ORM object** | A Python object that stands for a database row (SQLAlchemy gives you these, see [Databases 05](../databases/05-orms-and-sqlalchemy.md)). Its values are **attributes** (`row.title`), not dict keys. |
+| **ORM object** | A Python object that stands for a database row (SQLAlchemy gives you these, see [Databases 05](../databases/05-sqlalchemy.md)). Its values are **attributes** (`row.title`), not dict keys. |
 | **`from_attributes`** | A model setting that lets Pydantic read the values from attributes of any object, so an ORM row can be turned into a model. |
 
 ## The idea
