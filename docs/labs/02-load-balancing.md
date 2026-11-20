@@ -717,3 +717,4 @@ make down        # stops and removes the containers and the network; nothing els
 
 ## Go deeper
 - Course: [Networking 02 - DNS](../courses/networking/02-dns.md)
+- Course: [Networking 04 - Proxies: forward vs reverse](../courses/networking/04-proxies.md)
