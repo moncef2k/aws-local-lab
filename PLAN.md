@@ -124,7 +124,7 @@ Nothing will be installed system-wide without asking you first.
 ### Lab 06 — Object storage (S3) · epic `AWSLAB-10`
 - [x] **18. S3 server (SeaweedFS, see D5) + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `aws` CLI job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `aws s3 ls`.
 - [x] **19. `POST /upload` + presigned URL.** `AWSLAB-37` boto3 against the S3 server (SeaweedFS), endpoint and bucket from env vars. *Check:* upload returns key + URL.
-- [ ] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → the S3 server so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
+- [x] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → the S3 server so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
 - [ ] **21. Storage test.** `AWSLAB-39` 🔀 `tests/06_storage.sh` upload → download → compare checksum. *Check:* `make test` green.
 
 ### Lab 07 — Queues & workers (SQS) · epic `AWSLAB-11`

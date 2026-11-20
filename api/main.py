@@ -32,20 +32,31 @@ CACHE_TTL = int(os.environ.get("CACHE_TTL_SECONDS", "60"))
 # "path" addressing = http://s3:8333/<bucket>/<key>; real S3 uses <bucket>.s3.amazonaws.com, which a
 # container name cannot imitate.
 S3_BUCKET = os.environ["S3_BUCKET"]
-s3 = boto3.client(
-    "s3",
-    endpoint_url=os.environ["S3_ENDPOINT_URL"],
-    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
-    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
-    region_name="us-east-1",
-    config=Config(
-        signature_version="s3v4",
-        s3={"addressing_style": "path"},
-        connect_timeout=2,
-        read_timeout=5,
-        retries={"max_attempts": 1},
-    ),
-)
+
+
+def make_s3_client(endpoint_url: str):
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+        aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+        region_name="us-east-1",
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            connect_timeout=2,
+            read_timeout=5,
+            retries={"max_attempts": 1},
+        ),
+    )
+
+
+# Two addresses for the same store. The API reaches it inside the private network (http://s3:8333),
+# but a browser on your machine cannot resolve "s3": the link we hand out must use the public name
+# (http://s3.localhost, served by the load balancer). A presigned URL signs the host name, so it has
+# to be created for the address the client will really call. Signing is local maths: no network call.
+s3 = make_s3_client(os.environ["S3_ENDPOINT_URL"])
+s3_public = make_s3_client(os.environ.get("S3_PUBLIC_ENDPOINT_URL", os.environ["S3_ENDPOINT_URL"]))
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 PRESIGN_SECONDS = int(os.environ.get("PRESIGN_SECONDS", "300"))
 
@@ -177,7 +188,7 @@ def upload(file: Annotated[UploadFile, File()]):
     content_type = file.content_type or "application/octet-stream"
     try:
         s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data, ContentType=content_type)
-        url = s3.generate_presigned_url(
+        url = s3_public.generate_presigned_url(
             "get_object", Params={"Bucket": S3_BUCKET, "Key": key}, ExpiresIn=PRESIGN_SECONDS
         )
     except (BotoCoreError, ClientError) as exc:
