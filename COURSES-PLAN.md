@@ -399,3 +399,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 24 | Nginx 03 - proxy_pass and proxy headers | AWSLAB-113 | `c0753ff` (+ fix `110591f`) | PASS WITH NOTES, notes fixed |
 | step 25 | AWS 07 - ElastiCache | AWSLAB-114 | `facf6e2` (+ fix `507e5d9`; message written with capital AWS, the guard hook blocks the lowercase word) | PASS WITH NOTES, notes fixed |
 | step 25 | Nginx 04 - Upstreams and load-balancing methods | AWSLAB-115 | `6662e2d` (+ fix `d5a3785`) | PASS WITH NOTES, notes fixed |
+| step 26 | Caching 01 - Why cache | AWSLAB-116 | `ceae9ed` (+ fix `8b1fcd9`) | PASS WITH NOTES, notes fixed |
+| step 26 | Nginx 05 - Timeouts, retries and passive health checks | AWSLAB-117 | `c3c3710` (+ fix `8b1fcd9`) | PASS WITH NOTES, notes fixed |
