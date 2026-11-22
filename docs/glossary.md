@@ -8,6 +8,8 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Active vs passive health check** | Active: the load balancer calls a health URL on a timer and removes failing servers before users notice (AWS ALB). Passive: it only notices a server is dead when a real request fails (open-source Nginx). | AWS: target group health check · Local: Nginx `max_fails` / `fail_timeout` | 02 |
 | **ALB** (Application Load Balancer) | Receives web traffic and spreads it over several copies of an app; stops sending traffic to broken ones. | AWS: ALB · Local: Nginx | 02 |
 | **Alembic** | The migration tool of the SQLAlchemy family: applies numbered migration scripts to a database and remembers which ones were applied (in the `alembic_version` table). | Local tool (AWS has no equivalent: you run it as a task or CI step) | 04 |
+| **Asynchronous job** | Work the API accepts now and does later: it answers `202 Accepted` with a job id, a worker does the work, and the client polls `GET /jobs/{id}` for the status. | AWS: SQS + a worker (ECS/Lambda) + DynamoDB for the status · Local: Redis list + hash, `worker` (step 23) | 07 |
+| **At-least-once delivery** | The queue promises every message is processed at least once, possibly twice (if a worker crashes before it confirms). So the work must be idempotent. | AWS: SQS standard queue · Local: reliable-queue pattern (step 23) | 07 |
 | **Auto Scaling** | Adding or removing copies of an app automatically, based on load. | AWS: Auto Scaling groups · Local: Kubernetes HPA | 12 |
 | **Availability Zone (AZ)** | A separate data centre inside an AWS region. Spreading over several AZs survives the loss of one. | AWS only — cannot be simulated on one laptop | 03 |
 | **Bastion host** | A small, hardened server you go through to reach machines that are not exposed to the internet (such as a database in a private subnet). AWS offers Systems Manager Session Manager as a bastion without open ports. | AWS: bastion EC2 / SSM Session Manager · Local: the `db-proxy` service | 04 |
@@ -23,6 +25,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **CRUD** | Create, Read, Update, Delete: the four basic things you can do with stored records. In an HTTP API they map to `POST`, `GET`, `PUT`, `DELETE`. | Local: the `/notes` routes of the API | 04 |
+| **Dead-letter queue (DLQ)** | A second queue that receives the messages that failed too many times, so one bad message does not loop forever and can be inspected. | AWS: SQS DLQ + `maxReceiveCount` · Local: not simulated | 07 |
 | **Defence in depth** | Several layers of protection, so that getting through one (say, a bug in the API) does not give access to everything (say, the database). | AWS: public/private subnets + security groups · Local: `public` and `private` networks | 03 |
 | **Docker Compose** | A tool that starts several containers from one YAML file. | Local only (like a mini CloudFormation for containers) | 00 |
 | **Dockerfile** | The recipe to build an image. | AWS: same, then pushed to ECR | 01 |
@@ -64,12 +67,14 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
 | **Presigned URL** | A temporary link that gives access to one private object, without credentials. The link carries a signature computed from the secret key, the object, the expiry **and the host name**: change any of them and the signature no longer matches (`SignatureDoesNotMatch`). | AWS: S3 presigned URL · Local: SeaweedFS, signed for `s3.localhost` | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
+| **Producer / consumer** | The producer puts messages on a queue (here the API); the consumer, also called a worker, takes them off and does the work. | AWS: an app calling `SendMessage` / a worker calling `ReceiveMessage` · Local: `api` / `worker` | 07 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
 | **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
+| **Queue (message queue)** | An ordered line of messages: first in, first out. It separates asking for work from doing it, absorbs spikes and lets producer and consumer fail and scale independently. | AWS: SQS · Local: a Redis list (`queue:jobs`) | 07 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |
@@ -88,4 +93,5 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **tmpfs** | A folder kept in memory instead of on disk; its content disappears when the container stops. Used on Redis's `/data` so Docker does not create a hidden volume. | Local: Compose `tmpfs:` | 05 |
 | **TTL** (time to live) | How long a cached value stays valid before it expires by itself. | AWS/Redis: key expiry (`EX`, `TTL`) · Local: Redis | 05 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
+| **Visibility timeout** | After a consumer receives an SQS message, the message is only hidden for a while; if it is not deleted in time (the consumer crashed) it becomes visible again for another consumer. | AWS: SQS · Local: the `BLMOVE` to a "processing" list (step 23) | 07 |
 | **Volume** | Storage that outlives a container, so data survives a restart. | AWS: EBS · Local: Docker named volume | 04 |
