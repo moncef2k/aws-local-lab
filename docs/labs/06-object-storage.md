@@ -744,8 +744,14 @@ field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }   # a string field of the
 # 1. Upload 200,000 random bytes.
 in_tmp sh -c 'head -c 200000 /dev/urandom > blob.bin'
 sum_before=$(sha256sum "$tmp/blob.bin" | cut -d' ' -f1)
-code=$(in_tmp curl -s --max-time 10 -o up.json -w '%{http_code}' -F "file=@blob.bin;type=application/octet-stream" "$url/upload")
-resp=$(cat "$tmp/up.json")
+# The very first upload after a fresh start can answer 502 after about 10 seconds, while the S3 server is
+# still settling (Lab 06, troubleshooting): try up to 5 times before calling it a failure.
+for attempt in 1 2 3 4 5; do
+  code=$(in_tmp curl -s --max-time 20 -o up.json -w '%{http_code}' -F "file=@blob.bin;type=application/octet-stream" "$url/upload")
+  [ "$code" = 201 ] && break
+  echo "  wait  upload attempt $attempt answered HTTP $code, trying again"
+done
+resp=$(cat "$tmp/up.json" 2>/dev/null)
 key=$(echo "$resp" | field key)
 link=$(echo "$resp" | field url)
 if [ "$code" = 201 ] && [ -n "$key" ] && [ -n "$link" ]; then
@@ -818,6 +824,7 @@ exit "$fail"
 | `addr=$(docker compose port lb 80)` | Asks Compose where the load balancer is published, so the test follows `LB_HOST_PORT` without reading `.env`. | A hard-coded `localhost:80` breaks as soon as you change the port. |
 | `tmp=$(mktemp -d)`, `in_tmp`, relative file names | Works in a temporary folder and gives `curl` **relative** names: the Windows `curl.exe` cannot read Git Bash paths like `/tmp/x` (Troubleshooting). | With `-F "file=@$tmp/blob.bin"` the upload fails with `curl: (26)`. |
 | `field() { sed ... }` | Pulls one string field out of the JSON answer (`key`, `url`), like the other tests do for `id`. No `jq` needed. | |
+| `for attempt in 1 2 3 4 5` ... `break` | Tries the first upload up to 5 times and stops at the first `201`. Right after a fresh start the first upload can answer `502` for about 10 s (see Troubleshooting); `--max-time 20` leaves room for that. | With a single attempt, `make test` fails with `HTTP 000` whenever the S3 server has just started. |
 | `head -c 200000 /dev/urandom`, `sha256sum` | Random bytes cannot match by luck; the checksum identifies them exactly. | A text file such as `hello` could hide a mix-up that only shows on binary data. |
 | `case "$public_base" in http://s3.localhost*)` | Fails with a hint if the URL still carries the Docker-only host. | Without it, a wrong `S3_PUBLIC_ENDPOINT_URL` only shows up as a confusing download error. |
 | `curl ... "$link"` then `sha256sum` | The real check of the step: the host downloads the object with only the URL and gets the same bytes. | |
@@ -916,7 +923,7 @@ docker compose port s3 8333                                                     
 | `no such manifest: quay.io/minio/minio:latest` (also `...:RELEASE.2025-09-07T16-13-09Z`), and `denied: requested access to the resource is denied` for `minio/minio` on Docker Hub | MinIO stopped publishing community container images and archived the project. | Use another S3-compatible server. This lab uses SeaweedFS (decision D5 in `PLAN.md`). |
 | `Check Meta Folder (-mdir="C:/Program Files/Git/data") Writable: stat C:/Program Files/Git/data: no such file or directory` when running the image with `docker run ... server -dir=/data` from Git Bash | Git Bash rewrites an argument that looks like a Unix path (`/data`) into a Windows path before Docker sees it. Compose files are not affected. | Prefix the command with `MSYS_NO_PATHCONV=1`, or use `docker compose` with the path inside the YAML. |
 | `required variable S3_ACCESS_KEY is missing a value` on **any** `docker compose` command | The S3 keys have no default and Compose checks the whole file. | Add `S3_ACCESS_KEY` and `S3_SECRET_KEY` to `.env` (section 3). |
-| `502 object storage unavailable` for the **first** upload right after `docker compose start s3` (the next one, a few seconds later, works) | The `s3` container reports `healthy` slightly before the first upload can succeed; the exact cause was not investigated. | Retry after a few seconds. For a script, retry a few times with a pause. |
+| `502 object storage unavailable` for the **first** upload right after `docker compose start s3` (the next one, a few seconds later, works) | The `s3` container reports `healthy` slightly before the first upload can succeed. In the API log the cause is `Read timeout on endpoint URL` (the 5 s read timeout), and the S3 server's log shows its master still settling (`Not current leader`); the exact cause was not investigated further. Seen again in step 23: after `make test`'s `down` + `up`, `tests/06_storage.sh` failed with `HTTP 000` (its 10 s curl limit ran out during the ~10 s `502`). | Retry after a few seconds. `tests/06_storage.sh` now tries the first upload up to 5 times and prints `wait  upload attempt N answered HTTP 502, trying again` when it has to. |
 | `curl: (26)` and `HTTP 000` when uploading with `-F "file=@/tmp/hello.txt"` from Git Bash | The Windows `curl.exe` cannot read the Git Bash path `/tmp/...`: it is not a Windows path. | Run `curl` from the folder that holds the file and use a relative name (`-F "file=@hello.txt"`), or a Windows path. |
 | `413 Request Entity Too Large` with a small HTML page that ends in `nginx/1.30.6`, for a file of 2 MB | Nginx's default `client_max_body_size` is 1 MB, below the API's 5 MB limit. A JSON `413` (`file too large`) comes from the API instead. | `client_max_body_size 6m;` in `lb/nginx.conf`, then `docker compose exec -T lb nginx -s reload`. |
 | `SignatureDoesNotMatch` from the AWS CLI | The secret key used by the client is not the one the server was started with. | Use the same `S3_SECRET_KEY`. If you changed it in `.env`, run `docker compose up -d` again so `s3` restarts with the new value. |
