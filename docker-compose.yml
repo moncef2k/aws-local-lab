@@ -182,6 +182,25 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # The queue consumer (an ECS service or Lambda in AWS). It takes job ids from the Redis list, does
+  # the work and updates the job's status. No port, no volume, no local state: everything is in Redis.
+  worker:
+    build: ./worker
+    image: aws-local-lab-worker:0.1.0
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0
+      # How long the stub work of one job lasts, in seconds (step 24 replaces it with a real task).
+      WORK_SECONDS: ${WORK_SECONDS:-2}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - private
+    # Like an ECS service: if the worker dies, start another one (it puts unfinished jobs back in the queue).
+    restart: unless-stopped
+    # "docker stop" sends SIGTERM; the worker finishes its current job, then exits. Wait that long before SIGKILL.
+    stop_grace_period: 30s
+
   # The "bastion host" for the database: off by default, started only with "--profile admin".
   # Postgres itself never publishes a port (it sits on the internal "private" network, which cannot
   # publish ports at all), so a tiny relay joins "public" (to publish) and "private" (to reach it).
