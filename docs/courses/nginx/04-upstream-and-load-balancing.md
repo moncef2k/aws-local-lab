@@ -90,14 +90,14 @@ http {
 ```
 | Line | What it does | If you change or remove it |
 |---|---|---|
-| `upstream rr { server b1:8000; ... }` | A group of three servers, by name and port (found by Docker DNS, [Docker 07](../docker/07-networks.md)). With no method directive: **round robin**. | |
+| `upstream rr { server b1:8000; ... }` | A group of three servers, by name and port (found by Docker DNS, [Docker 07](../docker/07-networks.md)). With no method directive: **round robin**. | Without the group, `proxy_pass` could only name one server: nothing would be spread. |
 | `server b1:8000 weight=3;` | b1 gets three turns for each turn of b2 and of b3. | Remove `weight` and it is plain round robin again. |
-| `ip_hash;` | Select the method: the server is chosen from the client address. | |
-| `least_conn;` | Select the method: fewest requests in progress. | |
+| `ip_hash;` | Select the method: the server is chosen from the client address. | Remove it and requests are spread round robin: a client may change server at every request. |
+| `least_conn;` | Select the method: fewest requests in progress. | Remove it and the slow server gets the same share as the others (section 4 of the output). |
 | `server b3:8000 backup;` | b3 is used only if b1 and b2 are both unavailable. | Without `backup` b3 would share the load. |
 | `proxy_connect_timeout 1s;` | A dead server is given up on after 1 second. | The default is 60 seconds: a request to a dead server would hang for a minute ([Nginx 01](./01-web-server-and-reverse-proxy.md)). |
 | `proxy_next_upstream error timeout;` | If connecting fails or times out, try the next server of the group. | Without it the client would get the `502`/`504` instead of an answer from another server. |
-| `location /rr/ { proxy_pass http://rr/; }` | Requests under `/rr/` go to the group `rr`; the final `/` strips the prefix ([Nginx 03](./03-proxy-pass-and-headers.md)). | |
+| `location /rr/ { proxy_pass http://rr/; }` | Requests under `/rr/` go to the group `rr`; the final `/` strips the prefix ([Nginx 03](./03-proxy-pass-and-headers.md)). | Without the final `/`, `/rr/x` would reach the backend as `/rr/x`, not `/x`. |
 
 The lab's own upstream, `lb/nginx.conf` ([Lab 02, step 5](../../labs/02-load-balancing.md#step-5--three-api-replicas)), with the extra settings for containers that come and go:
 ```nginx
@@ -124,6 +124,11 @@ upstream api {
 | `sort \| uniq -c \| awk '{...}'` | Count how many times each name appears: `sort` groups equal lines, `uniq -c` counts them, `awk` prints them as `b1 x10`. |
 | `for _ in $(seq 12); do ... & done; wait` | Send 12 requests **at the same time** (`&` runs each in the background); `wait` waits for all of them. |
 | `docker stop b1 b2` | Stop two backends, to see how the group reacts. |
+| `docker network create nginx04` | A private network for the demo, so the containers find each other by name (`b1`, `b2`, `b3`). |
+| `for _ in $(seq 30); do ...; done` | Repeat 30 times: `seq 30` prints the numbers 1 to 30, and `_` is a loop variable we do not use. |
+| `printf 'first 6 : '` and `printf '%s ' "$(who /rr/)"` | Print text **without** a line break, so several answers end up on one line. |
+| `curl -s -o /dev/null -w '%{http_code} ' URL` | Quiet request that throws the body away (`-o /dev/null`) and prints only the status code (`-w`). |
+| `sleep 3` | Wait 3 seconds, so the containers are ready before the first request. |
 
 The backend, `echo.py`: it answers with its own host name, and **b1 sleeps 1.5 s on `/slow`** to play the overloaded server:
 ```python
