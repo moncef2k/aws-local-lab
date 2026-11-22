@@ -80,9 +80,9 @@ The page comes from `frontend`; the calls it makes afterwards go to the **same a
      <meta name="viewport" content="width=device-width, initial-scale=1">
      <title>AWS local lab</title>
      <style>
-       :root { --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5b6475; --line: #dde1e8; }
+       :root { --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5b6475; --line: #dde1e8; --ok: #1a7f37; --bad: #cf222e; }
        @media (prefers-color-scheme: dark) {
-         :root { --bg: #14171f; --card: #1d222d; --text: #e8ebf2; --muted: #9aa3b5; --line: #2e3544; }
+         :root { --bg: #14171f; --card: #1d222d; --text: #e8ebf2; --muted: #9aa3b5; --line: #2e3544; --ok: #3fb950; --bad: #ff7b72; }
        }
        body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
        main { max-width: 44rem; margin: 0 auto; padding: 2rem 1rem; }
@@ -99,7 +99,7 @@ The page comes from `frontend`; the calls it makes afterwards go to the **same a
        #tally .bar { height: .9rem; border-radius: .2rem; min-width: .5rem; }
        #calls { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .35rem; }
        #calls li { font-family: ui-monospace, monospace; font-size: .85rem; border-left: .35rem solid; padding-left: .5rem; }
-       .ok { color: #1a7f37; } .bad { color: #cf222e; }
+       .ok { color: var(--ok); } .bad { color: var(--bad); }
      </style>
    </head>
    <body>
