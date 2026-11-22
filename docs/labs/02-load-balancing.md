@@ -720,3 +720,4 @@ make down        # stops and removes the containers and the network; nothing els
 - Course: [Networking 04 - Proxies: forward vs reverse](../courses/networking/04-proxies.md)
 - Course: [Nginx 01 - What a web server and a reverse proxy are](../courses/nginx/01-web-server-and-reverse-proxy.md)
 - Course: [Nginx 02 - Config structure, `server` and `location` matching](../courses/nginx/02-config-server-location.md)
+- Course: [Nginx 03 - `proxy_pass` and proxy headers](../courses/nginx/03-proxy-pass-and-headers.md)
