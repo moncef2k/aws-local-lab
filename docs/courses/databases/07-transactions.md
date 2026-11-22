@@ -1,7 +1,7 @@
 # Databases 07 — Transactions
 
 > **Course:** [Databases](./README.md)  ·  **Time:** ~50 min  ·  **Needs:** [Databases 02](./02-sql.md) (SQL) and [Databases 05](./05-sqlalchemy.md) (SQLAlchemy sessions); [Docker 01](../docker/01-images-and-containers.md) for the exercise
-> **Used in the labs:** [Lab 04, step 12](../../labs/04-database.md) (`db.commit()` in the create, update and delete routes) and [Lab 07, step 22](../../labs/07-queues-workers.md) (the same idea in Redis: `MULTI`/`EXEC`)
+> **Used in the labs:** [Lab 04, step 12](../../labs/04-database.md) (`db.commit()` in the create, update and delete routes) and [Lab 07, step 22](../../labs/07-queues-workers.md) (a similar grouping in Redis: `MULTI`/`EXEC`)
 
 ## What you will learn
 - Explain what a **transaction** is and why "all or nothing" matters.
@@ -179,6 +179,11 @@ print("   the table holds:", how_many())
 | Command / flag | Meaning |
 |---|---|
 | `docker run -d --rm --name course-pg7 -e POSTGRES_PASSWORD=... postgres:18.7-alpine3.24` | A throw-away PostgreSQL (fake password). |
+| `until docker exec course-pg7 pg_isready -U postgres -q; do sleep 1; done` | Repeat `pg_isready` ("does the server accept connections yet?") every second until it says yes (`until` loops while the command fails; `-q` quiet). |
+| `docker cp FILE CONTAINER:/path` | Copy a file from your machine into a container. |
+| `psql -t -A -c "SQL"` (in `concurrent.sh`) | `-c` run this one command; `-t` no column headers, `-A` unaligned: just the bare value, easy to print in a script. |
+| `\pset footer off`, `\echo '...'` (in `tx_demo.sql`) | `psql` commands (not SQL): hide the "(2 rows)" line, print a label. |
+| `MSYS_NO_PATHCONV=1` | Git Bash on Windows would rewrite `/tmp/...` into a Windows path; this switch turns that off. |
 | `docker exec course-pg7 psql -U postgres -q -f /tmp/tx_demo.sql` | Run a SQL file: `-U` user, `-q` quiet, `-f` file. |
 | `docker run -d --name course-orm7 --network container:course-pg7 -e DATABASE_URL=... aws-local-lab-api:0.1.0 sleep 900` | A second container from the project's API image **sharing the database container's network**, so `localhost:5432` is the database ([Databases 05](./05-sqlalchemy.md)). |
 
@@ -276,7 +281,7 @@ docker exec course-orm7 python orm_demo.py
 Clean up: `docker rm -f course-orm7; docker stop course-pg7` (the database container was started with `--rm`).
 
 ## What if…?
-**…you skip the transaction?** Step 4 of the SQL experiment: bob has 580 and the total went from 150 to 650. Anything that must hold together (a transfer, an order with its lines, a job record **and** its queue entry) needs one transaction. In Lab 07 the producer does it in Redis with `MULTI`/`EXEC`.
+**…you skip the transaction?** Step 4 of the SQL experiment: bob has 580 and the total went from 150 to 650. Anything that must hold together (a transfer, an order with its lines, a job record **and** its queue entry) needs one transaction. In Lab 07 the producer groups its Redis commands with `MULTI`/`EXEC` (the commands run as one block; unlike SQL, Redis has no rollback if one of them fails on its own).
 
 ## In short
 1. A transaction groups changes so they apply **all together or not at all**: `BEGIN` ... `COMMIT`, or `ROLLBACK` (an error does it for you).
@@ -308,4 +313,4 @@ Clean up: `docker rm -f course-orm7; docker stop course-pg7` (the database conta
 ## Where you use this in the project
 - [Lab 04, step 12](../../labs/04-database.md): `create_note`, `update_note` and `delete_note` end with `db.commit()`; `get_db` closes the session after each request, so a route that forgets the commit loses its change.
 - [Databases 05](./05-sqlalchemy.md): the session and the engine that this module's `SessionLocal` comes from.
-- [Lab 07, step 22](../../labs/07-queues-workers.md): `POST /jobs` writes a record **and** pushes an id in one Redis `MULTI`/`EXEC`, the same all-or-nothing idea outside SQL.
+- [Lab 07, step 22](../../labs/07-queues-workers.md): `POST /jobs` writes a record **and** pushes an id in one Redis `MULTI`/`EXEC` block: a similar grouping idea outside SQL, without SQL's rollback.
