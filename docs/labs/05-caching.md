@@ -59,6 +59,8 @@ In the console: **ElastiCache â†’ Redis OSS caches** (or *Valkey*), plus **VPC â
 | Health | cluster status `available` | Docker healthcheck with `redis-cli ping` |
 | Replicas, Multi-AZ failover, backups, TLS | managed by AWS | not simulated |
 
+> **Later use (Lab 07, step 22):** the job queue lives in this same Redis. With these cache settings (`allkeys-lru`, no snapshot, no append-only file) queued jobs are lost when Redis restarts, and could be evicted when memory is full: see [Lab 07, step 22](./07-queues-workers.md#step-22--post-jobs-and-get-jobsid).
+
 ### 2.4 Diagram
 ```mermaid
 flowchart LR

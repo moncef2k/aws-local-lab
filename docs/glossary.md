@@ -71,10 +71,10 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
 | **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
+| **Queue (message queue)** | An ordered line of messages: first in, first out. It separates asking for work from doing it, absorbs spikes and lets producer and consumer fail and scale independently. | AWS: SQS · Local: a Redis list (`queue:jobs`) | 07 |
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
-| **Queue (message queue)** | An ordered line of messages: first in, first out. It separates asking for work from doing it, absorbs spikes and lets producer and consumer fail and scale independently. | AWS: SQS · Local: a Redis list (`queue:jobs`) | 07 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |

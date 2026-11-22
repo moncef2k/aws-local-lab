@@ -85,7 +85,7 @@ Solid arrows exist after step 22; dashed ones come in the next steps.
 - a **list**, `queue:jobs`, for the **order**: `LPUSH` adds an id at the head, and (step 23) the worker will take ids from the tail, so the oldest job goes first;
 - a **hash**, `job:<id>`, for the **record**: a set of fields (`type`, `status`, `payload`, `created_at`) that the worker can update one by one. It gets an **expiry** (`EXPIRE`) so records do not pile up forever.
 
-The three Redis commands of an enqueue run in one **`MULTI`/`EXEC`** block (a Redis *transaction*): all three happen, or none. Without it, a crash between "write the record" and "push the id" would leave a record nobody will ever process, and the reverse order would leave an id with no record.
+The three Redis commands of an enqueue run in one **`MULTI`/`EXEC`** block (a Redis *transaction*): Redis runs the three as one block with no other client's command in between, and runs none of them if the connection breaks before `EXEC`. (It is not a SQL-style rollback: if one command fails by itself, the others still run.) Without it, a crash between "write the record" and "push the id" would leave a record nobody will ever process, and the reverse order would leave an id with no record.
 
 **Do it.** Four changes, all in `api/main.py` (nothing in `docker-compose.yml`: `REDIS_URL` is already there).
 
@@ -151,7 +151,7 @@ The three Redis commands of an enqueue run in one **`MULTI`/`EXEC`** block (a Re
            "created_at": datetime.now(timezone.utc).isoformat(),
        }
        try:
-           pipe = queue.pipeline(transaction=True)  # MULTI/EXEC: the three commands run together or not at all
+           pipe = queue.pipeline(transaction=True)  # MULTI/EXEC: sent and run as one block, nothing in between
            pipe.hset(job_key(job_id), mapping=record)  # the record first ...
            pipe.expire(job_key(job_id), JOB_TTL)  # ... that disappears by itself after a day ...
            pipe.lpush(QUEUE_KEY, job_id)  # ... then the id joins the queue
@@ -180,12 +180,12 @@ The three Redis commands of an enqueue run in one **`MULTI`/`EXEC`** block (a Re
 |---|---|---|
 | `queue = redis.Redis.from_url(os.environ["REDIS_URL"], ...)` | A second client for the same server as `cache`, kept apart because the two have different rules. Timeouts: 1 s to connect, 2 s per command. | Reusing `cache` works, but mixes a "may fail silently" client with a "must not fail silently" one. |
 | `QUEUE_KEY = "queue:jobs"` | The name of the list. The `queue:` prefix keeps queue keys apart from the cache's `note:<id>` keys. | Another name works as long as the API and the worker agree. |
-| `JOB_TTL` (86400 s) | How long a job record lives. Redis deletes the hash by itself afterwards. | No expiry: finished jobs stay in memory forever. |
+| `JOB_TTL` (86400 s) | How long a job record lives. Redis deletes the hash by itself afterwards. The value is a default in the code: `docker-compose.yml` does not pass `JOB_TTL_SECONDS` to the API yet. | No expiry: finished jobs stay in memory forever. |
 | `class JobIn` / `type`, `payload` | The body clients send. `type` is required (1–50 characters); `payload` is optional, at most 10 entries, **strings only**. | Without `max_length` a client could store a huge record in Redis. |
 | `status_code=status.HTTP_202_ACCEPTED` | `202`: "I accepted your request, the work is not done". | `201 Created` or `200 OK` would suggest the work exists or is finished. |
 | `uuid4().hex` | A random, unique 32-character id; the client cannot guess or choose one. | Sequential ids (`1`, `2`, ...) let anyone read other people's jobs by counting. |
 | `json.dumps(data.payload)` | A Redis hash stores flat strings, so the payload dict is stored as a JSON text and decoded in `job_out`. | |
-| `queue.pipeline(transaction=True)` | Collects the commands and sends them wrapped in `MULTI` ... `EXEC`: Redis runs them as one unit. | `transaction=False` still batches them but without the all-or-nothing guarantee. |
+| `queue.pipeline(transaction=True)` | Collects the commands and sends them wrapped in `MULTI` ... `EXEC`: Redis runs them as one block, with nothing in between. | `transaction=False` still batches them but without that guarantee (other commands could slip in between, and a broken connection could leave only some of them applied). |
 | `hset`, `expire`, `lpush` | Write the record, set its expiry, push the id on the queue's head. The record goes **first**. | If the id were pushed first, a very fast worker could look up a record that does not exist yet. |
 | `except redis.RedisError` → `503` | When Redis is down, the route answers `503 Service Unavailable` and logs the cause. | Without it the client would get an ugly `500`. A `202` without a queued job would be worse: a lie. |
 | `Path(pattern=r"^[0-9a-f]{32}$")` | `GET /jobs/{job_id}` accepts only 32 lower-case hex characters, the shape of our ids. Anything else is `422` ([FastAPI 03](../courses/fastapi/03-parameters.md)). | Without it, any string would be turned into a Redis key. |
@@ -229,6 +229,11 @@ created_at 2026-11-22T16:12:28.456738+00:00
 (The `LLEN ... =` labels were added with `echo`, and `hgetall`'s name/value lines were paired with `paste` to save space.) The **list** holds the id, the **hash** holds the record, and the record's **TTL** is about a day (86399 s, one second after creation).
 
 **Check 3 — the order of the queue.** Three more jobs through the load balancer (so several API replicas), then the list:
+```bash
+for i in 1 2 3; do curl -s -X POST localhost:8088/jobs -H 'Content-Type: application/json' -d "{\"type\":\"noop\",\"payload\":{\"n\":\"$i\"}}"; done
+rcli llen queue:jobs
+rcli lrange queue:jobs 0 3
+```
 ```text
 LLEN = 4
 first 4 entries (newest first): a2ac3fe0 6cb601ce 8553077e a1633017
@@ -268,7 +273,13 @@ api-3  | ERROR:    could not read job a1633017d8cb4ad0ab100e6abe71feb5: Error -3
 ```
 Compare with Lab 05: the **cache** failing made the API *slower* (`X-Cache: BYPASS`, still `200`). The **queue** failing makes the job routes answer **`503`**, because there is no sensible fallback: pretending to accept a job that was never queued would lose it silently. Other routes (`GET /notes`) are not affected. The same `Temporary failure in name resolution` as in Lab 05: Docker's DNS stops answering for a stopped container.
 
-**Check 6 — what a restart does to a queue on this Redis.** After `docker compose start redis`:
+**Check 6 — what a restart does to a queue on this Redis.** After `docker compose start redis` (Check 5):
+```bash
+rcli llen queue:jobs
+curl -s -w ' [HTTP %{http_code}]
+' localhost:8088/jobs/<the first id>
+rcli config get maxmemory-policy; rcli config get appendonly; rcli config get save
+```
 ```text
 LLEN queue:jobs after the restart = 0
 {"detail":"job not found"} [HTTP 404]
@@ -303,7 +314,7 @@ make test
 - A job lives in **two** places that must stay consistent: an id in a **list** (the order) and a record in a **hash** (the details). One `MULTI`/`EXEC` writes both, or neither.
 - The **status** is the contract with the client: `queued` now, `processing` and `done` or `failed` once the worker of step 23 exists. The client polls `GET /jobs/{id}`; AWS would typically keep that status in DynamoDB, since SQS has none.
 - **A queue on a cache-style Redis can lose jobs.** Three ways, all caused by the Lab 05 settings: a restart empties it (Check 6), a full memory may evict a job (`allkeys-lru`), and a crash in the middle of a job loses it unless the worker uses the reliable pattern of step 23. SQS stores messages durably in several zones and never evicts them. For a real project the queue would get its **own** Redis with a persistence file and the `noeviction` policy (or simply use SQS); here the plan keeps one Redis to stay small, and the limit is part of the lesson. The API also says it plainly: a job is only `queued` once Redis has accepted it, otherwise `503`.
-- `job:<id>` records expire after 24 hours (`JOB_TTL_SECONDS`, optional in `.env`), so even a finished job's record is temporary: a client that polls late gets `404`.
+- `job:<id>` records expire after 24 hours (the default of `JOB_TTL`; to change it, pass `JOB_TTL_SECONDS` to the `api` service in `docker-compose.yml`), so even a finished job's record is temporary: a client that polls late gets `404`.
 
 ## 5–11. To be completed at the end of Lab 07
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 25). No new problem was met in step 22.
