@@ -189,11 +189,18 @@ services:
     image: aws-local-lab-worker:0.1.0
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0
-      # How long the stub work of one job lasts, in seconds (step 24 replaces it with a real task).
+      # How long a "noop" job lasts, in seconds.
       WORK_SECONDS: ${WORK_SECONDS:-2}
+      # The object store, like the api service: the worker reads the uploads and writes the thumbnails.
+      S3_ENDPOINT_URL: http://s3:8333
+      S3_BUCKET: ${S3_BUCKET:-uploads}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
     depends_on:
       redis:
         condition: service_healthy
+      s3-init:
+        condition: service_completed_successfully
     networks:
       - private
     # Like an ECS service: if the worker dies, start another one (it puts unfinished jobs back in the queue).

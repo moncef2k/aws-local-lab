@@ -5,8 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# The only dependency, pinned (same version as the API). Step 24 adds Pillow and boto3.
-RUN pip install --no-cache-dir redis==8.1.0
+# Dependencies, pinned: redis and boto3 at the same versions as the API, Pillow (images) for the thumbnails.
+RUN pip install --no-cache-dir redis==8.1.0 boto3==1.44.6 Pillow==13.0.0
 
 COPY worker.py .
 

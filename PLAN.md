@@ -130,7 +130,7 @@ Nothing will be installed system-wide without asking you first.
 ### Lab 07 — Queues & workers (SQS) · epic `AWSLAB-11`
 - [x] **22. `POST /jobs` + `GET /jobs/{id}`.** `AWSLAB-40` Enqueue to a Redis list (reliable `BLMOVE` pattern), job status in a Redis hash. *Check:* job id returned, status `queued`.
 - [x] **23. Worker container.** `AWSLAB-41` `worker/` consumes jobs, config from env, no local state, graceful shutdown. *Check:* logs show job picked up, status → `done` (stub work).
-- [ ] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from the S3 server (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
+- [x] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from the S3 server (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
 - [ ] **25. Async test.** `AWSLAB-43` 🔀 `tests/07_async.sh` submit job → poll until done → thumbnail downloadable. *Check:* `make test` green.
 
 ### Lab 08 — Frontend & CDN (S3 static hosting + CloudFront) · epic `AWSLAB-12`

@@ -5,8 +5,11 @@ Reliable-queue pattern (what SQS does with its visibility timeout):
   2. do the work, update the status in the hash job:<id>
   3. LREM queue:processing                  : the "acknowledge": the job is finished for good.
 An id left in queue:processing means a worker died mid-job; at start-up it is put back in the queue.
-No local state: everything lives in Redis, and the settings come from the environment.
+Job types (the "type" field of the job): "thumbnail" (step 24) and "noop" (sleeps, for tests).
+No local state: everything lives in Redis and in the bucket, and the settings come from the environment.
 """
+import io
+import json
 import logging
 import os
 import signal
@@ -14,13 +17,33 @@ import socket
 import time
 from datetime import datetime, timezone
 
+import boto3
 import redis
+from botocore.config import Config
+from PIL import Image, ImageOps
 
 REDIS_URL = os.environ["REDIS_URL"]
-WORK_SECONDS = float(os.environ.get("WORK_SECONDS", "2"))  # how long the stub work lasts
+WORK_SECONDS = float(os.environ.get("WORK_SECONDS", "2"))  # how long a "noop" job lasts
 QUEUE_KEY = "queue:jobs"  # same names as in api/main.py
 PROCESSING_KEY = "queue:processing"
 POLL_SECONDS = 2  # one blocking wait lasts this long: also the longest a stop request waits
+
+# The object store (S3 in AWS): same settings and same client options as the API (api/main.py).
+S3_BUCKET = os.environ["S3_BUCKET"]
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.environ["S3_ENDPOINT_URL"],
+    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+    region_name="us-east-1",
+    config=Config(
+        signature_version="s3v4",
+        s3={"addressing_style": "path"},
+        connect_timeout=3,
+        read_timeout=10,
+        retries={"max_attempts": 2},
+    ),
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(socket.gethostname())  # the container id, to tell workers apart in the logs
@@ -51,21 +74,57 @@ def requeue_unfinished(r: redis.Redis) -> None:
         log.warning("requeued %s unfinished job(s) left by a previous worker", count)
 
 
+def make_thumbnail(payload: dict) -> dict:
+    """Read the image payload["key"] from the bucket, shrink it to fit in size x size, write it back."""
+    key = payload.get("key", "")
+    if not key.startswith("originals/"):
+        raise ValueError("payload.key must be an object under originals/")
+    size = int(payload.get("size", "128"))
+    if not 16 <= size <= 1024:
+        raise ValueError("payload.size must be between 16 and 1024")
+    data = s3.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read()
+    with Image.open(io.BytesIO(data)) as img:  # raises UnidentifiedImageError if it is not an image
+        img = ImageOps.exif_transpose(img)  # apply the camera's rotation flag, if any
+        if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+            img = img.convert("RGB")  # modes PNG cannot store (CMYK, ...)
+        img.thumbnail((size, size))  # shrink in place, keeping the proportions
+        width, height = img.size
+        out = io.BytesIO()
+        img.save(out, format="PNG")
+    name = os.path.splitext(os.path.basename(key))[0]
+    out_key = f"thumbnails/{name}-{size}.png"  # the size is in the name; a redo of the same job overwrites
+    s3.put_object(Bucket=S3_BUCKET, Key=out_key, Body=out.getvalue(), ContentType="image/png")
+    return {"result_key": out_key, "result_size": f"{width}x{height}"}
+
+
+def do_noop(payload: dict) -> dict:
+    time.sleep(WORK_SECONDS)  # pretend to work
+    return {}
+
+
+HANDLERS = {"thumbnail": make_thumbnail, "noop": do_noop}
+
+
 def process(r: redis.Redis, job_id: str) -> None:
     key = f"job:{job_id}"
     if not r.exists(key):  # the record expired while the id waited
         log.warning("job %s has no record any more: dropped", job_id)
         return
     r.hset(key, mapping={"status": "processing", "started_at": now()})
-    log.info("picked up job %s (%s)", job_id, r.hget(key, "type"))
-    try:
-        time.sleep(WORK_SECONDS)  # the stub work: step 24 replaces it with a real task
+    job_type = r.hget(key, "type")
+    log.info("picked up job %s (%s)", job_id, job_type)
+    try:  # everything that can go wrong with the job itself happens inside this block
+        handler = HANDLERS.get(job_type)
+        if handler is None:
+            raise ValueError(f"unknown job type {job_type!r}")
+        result = handler(json.loads(r.hget(key, "payload") or "{}"))
     except Exception as exc:
-        r.hset(key, mapping={"status": "failed", "error": str(exc)[:200], "finished_at": now()})
-        log.error("job %s failed: %s", job_id, exc)
+        message = f"{type(exc).__name__}: {exc}"[:200]
+        r.hset(key, mapping={"status": "failed", "error": message, "finished_at": now()})
+        log.error("job %s failed: %s", job_id, message)
         return
-    r.hset(key, mapping={"status": "done", "finished_at": now()})
-    log.info("job %s done", job_id)
+    r.hset(key, mapping={"status": "done", "finished_at": now(), **result})
+    log.info("job %s done %s", job_id, result or "")
 
 
 def main() -> None:
@@ -75,7 +134,7 @@ def main() -> None:
     r = redis.Redis.from_url(
         REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=POLL_SECONDS + 5
     )
-    log.info("worker started (work takes %s s per job)", WORK_SECONDS)
+    log.info("worker started (job types: %s)", ", ".join(HANDLERS))
     recovered = False
     while not stopping:
         try:
