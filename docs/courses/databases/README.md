@@ -14,7 +14,7 @@ Back to the [course index](../README.md). Read each module next to [Lab 04](../.
 | 03 | [PostgreSQL: server, roles, databases](./03-postgresql.md) | ✅ written | Lab 04, step 10 |
 | 04 | [Schemas, migrations and Alembic](./04-schemas-and-migrations.md) | ✅ written | Lab 04, step 11 |
 | 05 | [ORMs and SQLAlchemy](./05-sqlalchemy.md) | ✅ written | Lab 04, step 11 |
-| 06 | Indexes | ⬜ planned | Lab 04, step 12 |
+| 06 | [Indexes](./06-indexes.md) | ✅ written | Lab 04, step 12 |
 | 07 | Transactions | ⬜ planned | Lab 04, step 12 |
 | 08 | Connection pooling | ⬜ planned | Lab 04, step 12 |
 | 09 | Backups: pg_dump and restore | ⬜ planned | Lab 04, step 14 |

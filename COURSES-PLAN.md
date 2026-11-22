@@ -145,7 +145,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 03 | PostgreSQL: server, roles, databases | `03-postgresql.md` | step 10 (Lab 04) | step 15 | AWSLAB-94 | `postgres` service, `pg_isready`, password from `.env` |
 | 04 | Schemas, migrations and Alembic | `04-schemas-and-migrations.md` | step 11 (Lab 04) | step 17 | AWSLAB-98 | First migration creating `notes`; `migrate` one-shot service, `alembic_version` |
 | 05 | ORMs and SQLAlchemy | `05-sqlalchemy.md` | step 11 (Lab 04) | step 18 | AWSLAB-100 | DB layer in the API |
-| 06 | Indexes | `06-indexes.md` | step 12 (Lab 04) | step 21 | - | Primary-key lookups in `GET /notes/{id}` |
+| 06 | Indexes | `06-indexes.md` | step 12 (Lab 04) | step 21 | AWSLAB-106 | Primary-key lookups in `GET /notes/{id}` |
 | 07 | Transactions | `07-transactions.md` | step 12 (Lab 04) | step 22 | - | Commit/rollback in create/update/delete |
 | 08 | Connection pooling | `08-connection-pooling.md` | step 12 (Lab 04) | step 23 | - | 3 replicas x pool size vs Postgres `max_connections` |
 | 09 | Backups: pg_dump and restore | `09-backups.md` | step 14 (Lab 04) | step 24 | - | Persistence test; RDS snapshots comparison |

@@ -1231,3 +1231,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [Databases 05 - ORMs and SQLAlchemy](../courses/databases/05-sqlalchemy.md)
 - Course: [FastAPI 03 - Path, query and body parameters](../courses/fastapi/03-parameters.md)
 - Course: [FastAPI 04 - Pydantic models and validation](../courses/fastapi/04-pydantic.md)
+- Course: [Databases 06 - Indexes](../courses/databases/06-indexes.md)
