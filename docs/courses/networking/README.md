@@ -14,7 +14,7 @@ Back to the [course index](../README.md).
 | 02 | [DNS](./02-dns.md) | ✅ written | Lab 02, step 4 |
 | 03 | [HTTP requests, responses and status codes](./03-http.md) | ✅ written | Lab 01, step 2 |
 | 04 | [Proxies: forward vs reverse](./04-proxies.md) | ✅ written | Lab 02, step 4 |
-| 05 | NAT and port forwarding | ⬜ planned | Lab 01, step 3 |
+| 05 | [NAT and port forwarding](./05-nat-and-port-forwarding.md) | ✅ written | Lab 01, step 3 |
 | 06 | [Subnets and CIDR](./06-subnets-and-cidr.md) | ✅ written | Lab 03, step 8 |
 | 07 | [Firewalls and security groups](./07-firewalls-and-security-groups.md) | ✅ written | Lab 03, step 8 |
 | 08 | HTTPS and TLS | ⬜ planned | Lab 08, step 28 |

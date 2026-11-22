@@ -105,7 +105,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 02 | DNS | `02-dns.md` | step 4 (Lab 02) | step 18 | AWSLAB-101 | Docker DNS `127.0.0.11`, `resolve` + `valid=5s` |
 | 03 | HTTP requests, responses and status codes | `03-http.md` | step 2 (Lab 01) | step 19 | AWSLAB-103 | `curl` on `/health` and `/whoami`; 502/503 during failover |
 | 04 | Proxies: forward vs reverse | `04-proxies.md` | step 4 (Lab 02) | step 20 | AWSLAB-105 | Nginx as a reverse proxy in front of the API |
-| 05 | NAT and port forwarding | `05-nat-and-port-forwarding.md` | step 3 (Lab 01) | step 21 | - | `127.0.0.1:<port>:8000` mapping; private network without NAT (8) |
+| 05 | NAT and port forwarding | `05-nat-and-port-forwarding.md` | step 3 (Lab 01) | step 21 | AWSLAB-107 | `127.0.0.1:<port>:8000` mapping; private network without NAT (8) |
 | 06 | Subnets and CIDR | `06-subnets-and-cidr.md` | step 8 (Lab 03) | step 8 | AWSLAB-80 | Network subnets in `docker network inspect` |
 | 07 | Firewalls and security groups | `07-firewalls-and-security-groups.md` | step 8 (Lab 03) | step 9 | AWSLAB-82 | Public/private split and the isolation test (9) |
 | 08 | HTTPS and TLS | `08-https-and-tls.md` | step 28 (Lab 08) | step 39 | - | mkcert certificate, port 443, redirect |
@@ -350,7 +350,8 @@ back and the plan updated.
 14. [x] Step 18 modules written (Databases 05 and Networking 02).
 15. [x] Step 19 modules written (FastAPI 03 and Networking 03).
 16. [x] Step 20 modules written (FastAPI 04 and Networking 04).
-17. [ ] Next modules: see "Schedule by lab step" (step 21: Databases 06 and Networking 05).
+17. [x] Step 21 modules written (Databases 06 and Networking 05).
+18. [ ] Next modules: see "Schedule by lab step" (step 22: Databases 07 and Nginx 01).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
