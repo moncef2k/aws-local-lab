@@ -758,3 +758,6 @@ Redis has **no volume** (step 15), so any `down` empties the cache, with or with
 - [redis-py documentation](https://redis-py.readthedocs.io/en/stable/) (Python client)
 - [HTTP caching and the `X-Cache` idea in CDNs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching) (MDN)
 - [Docker Compose: `tmpfs`](https://docs.docker.com/reference/compose-file/services/#tmpfs) (Docker)
+
+## Go deeper
+- Course: [AWS 07 - ElastiCache](../courses/aws/07-elasticache.md)

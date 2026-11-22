@@ -30,7 +30,7 @@ Modules marked ⬜ are planned, ✅ are written.
 | Workers and queues | 7 | 0 |
 | Kubernetes | 10 | 0 |
 | Terraform | 6 (+1 on request) | 0 |
-| [AWS](./aws/README.md) | 12 (+2 on request) | 2 |
+| [AWS](./aws/README.md) | 12 (+2 on request) | 3 |
 
 ## Which lab uses which course
 Modules whose topic first appears in each lab. Read them before, during or after the lab.
@@ -42,7 +42,7 @@ Modules whose topic first appears in each lab. Read them before, during or after
 | [02 - Load balancing](../labs/02-load-balancing.md) | [Networking 02](./networking/02-dns.md), [Networking 04](./networking/04-proxies.md), [Nginx 01](./nginx/01-web-server-and-reverse-proxy.md), [Nginx 02](./nginx/02-config-server-location.md), [Nginx 03](./nginx/03-proxy-pass-and-headers.md), Nginx 04, Nginx 05, Nginx 08, AWS 05, AWS 14 |
 | [03 - Networking](../labs/03-networking.md) | [Networking 06](./networking/06-subnets-and-cidr.md), [Networking 07](./networking/07-firewalls-and-security-groups.md), [AWS 04](./aws/04-vpc.md) |
 | [04 - Database](../labs/04-database.md) | [Docker 08](./docker/08-volumes-and-bind-mounts.md), [FastAPI 03](./fastapi/03-parameters.md), [FastAPI 04](./fastapi/04-pydantic.md), [FastAPI 07](./fastapi/07-dependencies.md), FastAPI 08 *(on request)*, [Databases 01](./databases/01-relational-basics.md), [Databases 02](./databases/02-sql.md), [Databases 03](./databases/03-postgresql.md), [Databases 04](./databases/04-schemas-and-migrations.md), [Databases 05](./databases/05-sqlalchemy.md), [Databases 06](./databases/06-indexes.md), [Databases 07](./databases/07-transactions.md), [Databases 08](./databases/08-connection-pooling.md), [Databases 09](./databases/09-backups.md), [AWS 06](./aws/06-rds.md) |
-| [05 - Caching](../labs/README.md) | Caching 01, Caching 02, Caching 03, Caching 04, Caching 05, Caching 06, AWS 07 |
+| [05 - Caching](../labs/05-caching.md) | Caching 01, Caching 02, Caching 03, Caching 04, Caching 05, Caching 06, [AWS 07](./aws/07-elasticache.md) |
 | [06 - Object storage](../labs/README.md) | AWS 02, AWS 08 |
 | [07 - Queues and workers](../labs/README.md) | Workers and queues 01, Workers and queues 02, Workers and queues 03, Workers and queues 04, Workers and queues 05, Workers and queues 06, AWS 10 |
 | [08 - Frontend and CDN](../labs/README.md) | Networking 08, Nginx 06, Nginx 07, AWS 09 *(on request)* |

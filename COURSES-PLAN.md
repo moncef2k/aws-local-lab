@@ -198,7 +198,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 04 | VPC: subnets, route tables, gateways | `04-vpc.md` | step 8 (Lab 03) | step 10 | AWSLAB-84 | Public/private Docker networks |
 | 05 | ELB: ALB, target groups, health checks | `05-elb.md` | step 4 (Lab 02) | step 34 | - | Nginx stands in for the ALB |
 | 06 | RDS: managed databases | `06-rds.md` | step 10 (Lab 04) | step 12 | AWSLAB-88 | Postgres container stands in for RDS |
-| 07 | ElastiCache | `07-elasticache.md` | step 15 (Lab 05) | step 25 | - | Redis container stands in for ElastiCache |
+| 07 | ElastiCache | `07-elasticache.md` | step 15 (Lab 05) | step 25 | AWSLAB-114 | Redis container stands in for ElastiCache |
 | 08 | S3: buckets, objects, presigned URLs | `08-s3.md` | step 18 (Lab 06) | step 33 | - | SeaweedFS (local S3), `POST /upload` |
 | 09 | CloudFront and CDNs | `09-cloudfront.md` | step 26 (Lab 08) | on request | - | Static frontend + caching headers (Lab 08) |
 | 10 | SQS: standard and FIFO queues | `10-sqs.md` | step 22 (Lab 07) | step 34 | - | Redis queue now, SQS in steps 56-58 |
