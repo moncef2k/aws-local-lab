@@ -23,6 +23,8 @@
 | **`max_connections`** | The most connections one PostgreSQL server accepts at once (default 100). |
 | **Reserved slots** | A few of those connections (3 by default) are kept for superusers, so an administrator can always get in. |
 | **Replica** | One copy of the application. The lab runs three API replicas, **each with its own pool**. |
+| **`psycopg`** | The Python library that talks to PostgreSQL; SQLAlchemy uses it underneath. The script also uses it directly to open plain connections. |
+| **`pg_stat_activity`** | A PostgreSQL view that lists every open connection (who, from where, doing what). |
 | **Pooler** | A separate program or service (PgBouncer, **RDS Proxy** in AWS) that sits between the applications and the database and shares a small number of real connections among many clients. |
 
 ## The idea
@@ -126,7 +128,7 @@ for conn in opened:
 | `from db import engine` | Imports the lab's engine (`DATABASE_URL` comes from the environment). | |
 | `select pg_backend_pid()` | Asks PostgreSQL for the id of **the server process** serving this connection: the same id means the same connection was reused. | |
 | `poolclass=NullPool` | An engine **without** a pool: each checkout opens a real connection. | |
-| `for ... in range(300)` | 300 checkouts of the tiny query `select 1`, timed with `perf_counter`. | |
+| `for ... in range(300)` | 300 checkouts of the tiny query `select 1`, timed with `time.perf_counter()` (Python's precise stopwatch). | |
 | `pool_size=2, max_overflow=0, pool_timeout=2` | A deliberately tiny pool. | With a bigger `max_overflow` the third client would get an extra connection instead of waiting. |
 | `held = [small.connect(), small.connect()]` | Borrows both connections and keeps them: the pool is empty. | |
 | `small.connect()` (third) | Has to wait; gives up after `pool_timeout` with `TimeoutError`. | |
@@ -136,8 +138,10 @@ for conn in opened:
 ## The commands
 | Command / flag | Meaning |
 |---|---|
-| `docker run -d --rm --name course-pg8 -e POSTGRES_PASSWORD=... postgres:18.7-alpine3.24 -c max_connections=10` | A throw-away PostgreSQL. Everything after the image name goes to the server: `-c max_connections=10` sets the limit to 10 so the experiment can reach it. |
-| `docker exec course-pg8 psql -U postgres -q -c "create role app login password 'app-pass'"` | Creates an ordinary (non-superuser) role `app` that may log in. |
+| `docker run -d --rm --name course-pg8 -e POSTGRES_PASSWORD=... postgres:18.7-alpine3.24 -c max_connections=10` | A throw-away PostgreSQL. `-d` run in the background, `--rm` delete the container when it stops, `--name` give it a name, `-e NAME=value` set an environment variable (here the password). Everything after the image name goes to the server: `-c max_connections=10` sets the limit to 10 so the experiment can reach it. |
+| `until docker exec course-pg8 pg_isready -U postgres -q; do sleep 1; done` | Wait until the server accepts connections: `pg_isready` asks it, `until` repeats the command (with a 1-second pause) as long as it fails, `-q` quiet. |
+| `MSYS_NO_PATHCONV=1` | Git Bash on Windows would rewrite `/app/...` paths in arguments into Windows paths; this switch turns that off. |
+| `docker exec course-pg8 psql -U postgres -q -c "create role app login password 'app-pass'"` | Runs `psql` inside the container: `-U` the login user, `-q` quiet, `-c` run this one SQL command. It creates an ordinary (non-superuser) role `app` that may log in. |
 | `docker run -d --name course-pool8 --network container:course-pg8 -e DATABASE_URL=... aws-local-lab-api:0.1.0 sleep 900` | A second container from the project's API image that **shares the database container's network**, so `localhost:5432` is the database ([Databases 05](./05-sqlalchemy.md)). |
 | `docker cp pool_demo.py course-pool8:/app/pool_demo.py` | Copy the script into the container (into `/app`, next to `db.py`). |
 | `docker exec course-pool8 python pool_demo.py` | Run it. |
