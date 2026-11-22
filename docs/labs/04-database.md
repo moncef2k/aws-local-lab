@@ -1234,3 +1234,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [Databases 06 - Indexes](../courses/databases/06-indexes.md)
 - Course: [Databases 07 - Transactions](../courses/databases/07-transactions.md)
 - Course: [Databases 08 - Connection pooling](../courses/databases/08-connection-pooling.md)
+- Course: [Databases 09 - Backups: pg_dump and restore](../courses/databases/09-backups.md)

@@ -148,7 +148,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 06 | Indexes | `06-indexes.md` | step 12 (Lab 04) | step 21 | AWSLAB-106 | Primary-key lookups in `GET /notes/{id}` |
 | 07 | Transactions | `07-transactions.md` | step 12 (Lab 04) | step 22 | AWSLAB-108 | Commit/rollback in create/update/delete |
 | 08 | Connection pooling | `08-connection-pooling.md` | step 12 (Lab 04) | step 23 | AWSLAB-110 | 3 replicas x pool size vs Postgres `max_connections` |
-| 09 | Backups: pg_dump and restore | `09-backups.md` | step 14 (Lab 04) | step 24 | - | Persistence test; RDS snapshots comparison |
+| 09 | Backups: pg_dump and restore | `09-backups.md` | step 14 (Lab 04) | step 24 | AWSLAB-112 | Persistence test; RDS snapshots comparison |
 
 ### Caching - Why and how to cache, with Redis. (6 modules)
 

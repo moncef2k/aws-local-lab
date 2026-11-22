@@ -17,7 +17,7 @@ Back to the [course index](../README.md). Read each module next to [Lab 04](../.
 | 06 | [Indexes](./06-indexes.md) | ✅ written | Lab 04, step 12 |
 | 07 | [Transactions](./07-transactions.md) | ✅ written | Lab 04, step 12 |
 | 08 | [Connection pooling](./08-connection-pooling.md) | ✅ written | Lab 04, step 12 |
-| 09 | Backups: pg_dump and restore | ⬜ planned | Lab 04, step 14 |
+| 09 | [Backups: pg_dump and restore](./09-backups.md) | ✅ written | Lab 04, step 14 |
 
 The order of the numbers is the suggested reading order. The order in which modules are written follows
 [`COURSES-PLAN.md`](../../COURSES-PLAN.md).
