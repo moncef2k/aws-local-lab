@@ -387,3 +387,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 20 | Networking 04 - Proxies: forward vs reverse | AWSLAB-105 | `9b315e1` | PASS |
 | step 21 | Databases 06 - Indexes | AWSLAB-106 | `9823660` (+ fix `737cb5f`) | PASS WITH NOTES, notes fixed |
 | step 21 | Networking 05 - NAT and port forwarding | AWSLAB-107 | `beb84dd` (+ fix `a520736`) | PASS WITH NOTES, notes fixed |
+| step 22 | Databases 07 - Transactions | AWSLAB-108 | `c215cad` (+ fix `e5877ca`) | PASS WITH NOTES, notes fixed (311 then 316 lines, accepted) |
+| step 22 | Nginx 01 - What a web server and a reverse proxy are | AWSLAB-109 | `d8887bf` (+ fix `d66c7df`) | PASS WITH NOTES, notes fixed |
