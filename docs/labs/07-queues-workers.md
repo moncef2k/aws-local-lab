@@ -1,9 +1,9 @@
 # Lab 07 — Queues and workers (SQS)
 
 > **AWS equivalent:** Amazon SQS (queues, messages, visibility timeout, dead-letter queues) + a worker on ECS or Lambda  ·  **Time:** ~90 min  ·  **Difficulty:** ★★★
-> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22), `89a7d7c` and `0e475a9` (step 23), `3a81ef1` (step 24) on `dev`
+> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22), `89a7d7c` and `0e475a9` (step 23), `3a81ef1` and `1c6150b` (step 24), `65afe54` (step 25) on `dev`
 
-> **Status:** in progress. Steps 22–24 are written. Step 25 (async test) and the closing sections (5–11) come next.
+> **Status:** done. Steps 22–25 and the closing sections are written.
 
 ## 1. What you will learn
 - Tell a **synchronous** request from an **asynchronous** one, and say when a queue is the right tool.
@@ -13,6 +13,7 @@
 - Explain why the two writes of an enqueue must be **atomic** (`MULTI`/`EXEC`), and what a queue on a cache-style Redis can lose.
 - Write a **worker** with the **reliable-queue pattern** (`BLMOVE` to a processing list, acknowledge with `LREM`), and show that a killed worker loses no job.
 - Handle **`SIGTERM`** so `docker stop` finishes the current job, and explain what a restart policy does and does not do.
+- Write a test for an **asynchronous** pipeline: poll with a deadline, check the result from the outside, and check the failure, shutdown and recovery behaviour.
 - Write a real **job handler**: read an image from the bucket, make a thumbnail with Pillow, write it back, and turn every failure into a `failed` status instead of a crash.
 
 ## 2. Theory
@@ -110,7 +111,7 @@ The three Redis commands of an enqueue run in one **`MULTI`/`EXEC`** block (a Re
    JOB_TTL = int(os.environ.get("JOB_TTL_SECONDS", "86400"))  # how long a job record is kept (24 h)
    ```
 
-3. The models and two small helpers, before `get_note_or_404`:
+3. The models and two small helpers, before `get_note_or_404` (as they are at the end of this step; [step 25](#step-25--the-async-test) adds optional result fields to `JobOut` and `job_out`):
    ```python
    class JobIn(BaseModel):
        """What a client sends to ask for a job."""
@@ -954,13 +955,381 @@ make test
 - The worker is **generic**: it dispatches on the job's `type`, so the next kind of job is one function and one entry in `HANDLERS`.
 - **Untrusted input means a failure path is part of the feature.** Five different bad jobs each ended as `failed` with a readable reason, and the worker kept going.
 - **Idempotent output keys** turn at-least-once delivery from a risk into a non-issue: running a job again rewrites the same object.
-- **Open points for step 25:** (1) `GET /jobs/{id}` does not show `result_key` yet: the API builds its answer from a fixed set of fields and ignores the extra ones the worker adds, so a client cannot learn where the thumbnail is without reading Redis; step 25 (the test) will need that, or the convention `thumbnails/<name>-<size>.png`. (2) The worker reads each original fully into memory (at most 5 MB) and refuses images of more than 25 million pixels, but the worker service has **no memory limit** of its own (`mem_limit`). (3) The `failed` jobs are not retried: a temporary S3 outage ends the job as `failed` instead of trying again.
+- **Open points:** (1) `GET /jobs/{id}` does not show `result_key` yet: the API builds its answer from a fixed set of fields and ignores the extra ones the worker adds, so a client cannot learn where the thumbnail is without reading Redis (**solved in [step 25](#step-25--the-async-test)**: the answer gets `result_key`, `result_size`, `error` and a presigned `result_url`). (2) The worker reads each original fully into memory (at most 5 MB) and refuses images of more than 25 million pixels, but the worker service has **no memory limit** of its own (`mem_limit`). (3) The `failed` jobs are not retried: a temporary S3 outage ends the job as `failed` instead of trying again.
 
-## 5–11. To be completed at the end of Lab 07
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 25). The problems met so far:
+### Step 25 — The async test
+**Why:** steps 22 to 24 were checked by hand. A test turns "it works on my screen" into a command that proves the whole **asynchronous pipeline** (API → queue → worker → bucket) and keeps proving it. It must check what a user cares about (the thumbnail can be **downloaded**) and what only the design promises (a bad job fails cleanly, a stopped worker does not lose a job, a dead worker's job is recovered).
 
+**One thing was missing: a way to find the result.** The worker writes `result_key` and `result_size` in the job's record, but `GET /jobs/{id}` built its answer from a fixed set of fields and ignored them (the open point of step 24): a client could not learn where its thumbnail is, or why a job failed. So this step first extends the API's answers with the optional fields `error`, `result_key`, `result_size` and a presigned **`result_url`** (the same kind of link as `/upload` returns). That is the standard pattern for asynchronous jobs: the client polls one URL and, when the job is done, finds the **link to the result** in it.
+
+**Do it.** Two files.
+
+1. `api/main.py`. The job answer gets the new optional fields, and `job_out` fills them from the job's record (`record.get(...)`, so they are absent while the job is queued):
+   ```python
+   class JobOut(BaseModel):
+       id: str
+       type: str
+       status: str  # queued -> processing -> done or failed (the worker moves it on)
+       created_at: datetime
+       payload: dict[str, str]
+       error: str | None = None  # why a job failed
+       result_key: str | None = None  # where the worker stored its result (a thumbnail)
+       result_size: str | None = None  # e.g. "128x85"
+       result_url: str | None = None  # a presigned GET link to the result, like the one of /upload
+   ```
+   `job_out`, with the presigned link made for the **public** address (the second client of step 20), only when there is a `result_key`:
+   ```python
+   def job_out(job_id: str, record: dict[str, str]) -> dict:
+       out = {
+           "id": job_id,
+           "type": record["type"],
+           "status": record["status"],
+           "created_at": record["created_at"],
+           "payload": json.loads(record["payload"]),
+           "error": record.get("error"),
+           "result_key": record.get("result_key"),
+           "result_size": record.get("result_size"),
+       }
+       if out["result_key"]:  # signing is local maths, no network call
+           out["result_url"] = s3_public.generate_presigned_url(
+               "get_object", Params={"Bucket": S3_BUCKET, "Key": out["result_key"]}, ExpiresIn=PRESIGN_SECONDS
+           )
+       return out
+   ```
+   Both job routes get `response_model_exclude_none=True`, so fields that are `None` are **left out** of the answer and the answers of earlier steps do not change:
+   ```python
+   @app.post("/jobs", response_model=JobOut, response_model_exclude_none=True, status_code=status.HTTP_202_ACCEPTED)
+   @app.get("/jobs/{job_id}", response_model=JobOut, response_model_exclude_none=True)
+   ```
+
+2. `tests/07_async.sh` (the whole file):
+   ```bash
+   #!/usr/bin/env bash
+   # Lab 07 test: the asynchronous pipeline (API -> Redis queue -> worker -> S3).
+   #  1. upload an image, submit a thumbnail job, poll until it is done, download the thumbnail from the
+   #     host with the presigned URL the API gives and check it is a PNG of the announced size;
+   #  2. a job that cannot work (the file is not an image) ends as "failed" with a reason, no result;
+   #  3. "docker compose stop worker" in the middle of a job lets the job finish (exit code 0);
+   #  4. a job left in the processing list by a dead worker is requeued and finished by the next worker.
+   # Needs the stack to be up (make up). Takes about 40 seconds. The test objects are deleted at the end.
+   set -u
+   cd "$(dirname "$0")/.."
+
+   fail=0
+   ok()  { echo "  PASS  $1"; }
+   bad() { echo "  FAIL  $1"; fail=1; }
+
+   addr=$(docker compose port lb 80 2>/dev/null)
+   if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+     echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+     exit 1
+   fi
+   url="http://${addr/0.0.0.0/127.0.0.1}"
+   if [ -z "$(docker compose ps --status running -q worker 2>/dev/null)" ]; then
+     echo "  FAIL  the worker service is not running: start the lab with 'make up' first"
+     exit 1
+   fi
+
+   echo "Lab 07 - queues and workers ($url)"
+
+   rcli() { docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli "$@"' sh "$@" 2>/dev/null | tr -d '\r'; }
+   field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }   # a string field of a JSON answer
+
+   # Work in a temporary folder with relative file names for curl (see Lab 06, troubleshooting).
+   tmp=$(mktemp -d)
+   keys=()      # bucket objects to delete at the end
+   job_ids=()   # job records to delete at the end
+   cleanup() {
+     docker compose start worker >/dev/null 2>&1   # in case the test stopped it and failed half way
+     for j in "${job_ids[@]}"; do rcli del "job:$j" >/dev/null; done
+     rm -rf "$tmp"
+     if [ "${#keys[@]}" -gt 0 ]; then
+       docker compose run --rm --no-deps -T --entrypoint sh s3-init -c \
+         'for k; do aws --endpoint-url http://s3:8333 s3 rm "s3://$S3_BUCKET/$k" >/dev/null; done' sh "${keys[@]}" >/dev/null 2>&1
+     fi
+   }
+   trap cleanup EXIT
+
+   # upload FILE TYPE -> prints the key (the first upload after a fresh start can fail for a while: try 5 times)
+   upload() {
+     local i body
+     for i in 1 2 3 4 5; do
+       body=$(cd "$tmp" && curl -s --max-time 20 -F "file=@$1;type=$2" "$url/upload")
+       [ -n "$(echo "$body" | field key)" ] && break
+     done
+     echo "$body" | field key
+   }
+   # submit BODY -> sets $code (HTTP status) and $id (job id)
+   submit() {
+     code=$(curl -s --max-time 10 -o "$tmp/job.json" -w '%{http_code}' -X POST "$url/jobs" -H 'Content-Type: application/json' -d "$1")
+     id=$(field id < "$tmp/job.json")
+     [ -n "$id" ] && job_ids+=("$id")
+   }
+   # wait_for ID SECONDS -> prints the status once it is done or failed (or the last one seen)
+   wait_for() {
+     local s=""
+     for _ in $(seq "$2"); do
+       s=$(curl -s --max-time 5 "$url/jobs/$1" | field status)
+       case "$s" in done|failed) break ;; esac
+       sleep 1
+     done
+     echo "$s"
+   }
+   # png_size FILE -> WxH (the PNG header holds the width and height as two 4-byte numbers at bytes 16-23)
+   png_size() {
+     set -- "$1" $(od -An -tu1 -j16 -N8 "$1" 2>/dev/null)
+     [ "$#" = 9 ] || { echo "unknown"; return; }   # the file is missing or too short
+     echo "$(( ($2 << 24) + ($3 << 16) + ($4 << 8) + $5 ))x$(( ($6 << 24) + ($7 << 16) + ($8 << 8) + $9 ))"
+   }
+
+   # 1. A 1200 x 800 image, made with Pillow in a throw-away container of the worker image.
+   docker run --rm --entrypoint python aws-local-lab-worker:0.1.0 -c "
+   import sys
+   from PIL import Image
+   im = Image.new('RGB', (1200, 800))
+   im.putdata([(x * 255 // 1200, y * 255 // 800, 128) for y in range(800) for x in range(1200)])
+   im.save(sys.stdout.buffer, 'PNG')" > "$tmp/big.png" 2>/dev/null
+   echo "just text, not an image" > "$tmp/notes.txt"
+   [ "$(png_size "$tmp/big.png")" = "1200x800" ] && ok "test image made: 1200x800" || { echo "  FAIL  could not make the test image (is the worker image built?)"; exit 1; }
+
+   # 2. Upload it, ask for a thumbnail, poll until done.
+   orig=$(upload big.png image/png)
+   [ -n "$orig" ] && keys+=("$orig") && ok "POST /upload: $orig" || { echo "  FAIL  upload failed"; exit 1; }
+   submit "{\"type\":\"thumbnail\",\"payload\":{\"key\":\"$orig\"}}"
+   [ "$code" = 202 ] && [ "$(field status < "$tmp/job.json")" = queued ] && ok "POST /jobs: 202 Accepted, status queued" || bad "POST /jobs: expected 202 + queued, got $code"
+   status=$(wait_for "$id" 30)
+   [ "$status" = done ] && ok "the worker finished the job: status done" || bad "job status after 30 s: '${status:-none}'"
+
+   # 3. The answer tells where the result is; download it from the host.
+   curl -s --max-time 5 "$url/jobs/$id" > "$tmp/done.json"
+   rkey=$(field result_key < "$tmp/done.json"); rsize=$(field result_size < "$tmp/done.json"); rurl=$(field result_url < "$tmp/done.json")
+   [ -n "$rkey" ] && keys+=("$rkey")
+   case "$rkey" in thumbnails/*) ok "result_key $rkey" ;; *) bad "unexpected result_key '$rkey'" ;; esac
+   [ "$rsize" = "128x85" ] && ok "result_size 128x85 (1200x800 shrunk to fit 128x128)" || bad "result_size: expected 128x85, got '$rsize'"
+   dcode=$(cd "$tmp" && curl -s --max-time 10 -o thumb.png -w '%{http_code}' "$rurl")
+   [ "$dcode" = 200 ] && ok "the thumbnail downloads from the host with the presigned URL: 200" || bad "thumbnail download: expected 200, got $dcode"
+   sig=$(od -An -tx1 -N8 "$tmp/thumb.png" 2>/dev/null | tr -d ' \n')
+   [ "$sig" = "89504e470d0a1a0a" ] && ok "it is a PNG" || bad "not a PNG (first bytes $sig)"
+   [ "$(png_size "$tmp/thumb.png")" = "$rsize" ] && ok "its real size is $rsize, as announced" || bad "real size $(png_size "$tmp/thumb.png"), announced $rsize"
+
+   # 4. A job that cannot work ends as failed, with a reason and no result.
+   txt=$(upload notes.txt text/plain); keys+=("$txt")
+   submit "{\"type\":\"thumbnail\",\"payload\":{\"key\":\"$txt\"}}"
+   status=$(wait_for "$id" 30)
+   curl -s --max-time 5 "$url/jobs/$id" > "$tmp/failed.json"
+   [ "$status" = failed ] && ok "a text file is not an image: status failed" || bad "bad job: expected failed, got '${status:-none}'"
+   grep -q 'UnidentifiedImageError' "$tmp/failed.json" && ok "the answer says why: $(field error < "$tmp/failed.json" | cut -c1-40)..." || bad "no error message in the answer"
+   grep -q 'result_url' "$tmp/failed.json" && bad "a failed job must not have a result_url" || ok "a failed job has no result_url"
+
+   # 5. docker compose stop in the middle of a job: the job finishes, the worker exits with code 0.
+   submit '{"type":"noop"}'
+   for _ in $(seq 20); do [ "$(curl -s --max-time 5 "$url/jobs/$id" | field status)" = processing ] && break; sleep 0.25; done
+   docker compose stop worker >/dev/null 2>&1
+   exitcode=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq worker)" 2>/dev/null)
+   status=$(curl -s --max-time 5 "$url/jobs/$id" | field status)
+   [ "$status" = done ] && ok "stopped during a job: the job still finished (done)" || bad "stopped during a job: status '$status'"
+   [ "$exitcode" = 0 ] && ok "the worker exited with code 0 (graceful shutdown)" || bad "worker exit code '$exitcode'"
+
+   # 6. A worker died holding a job: simulate it (worker stopped, the id moved to the processing list by hand),
+   #    start a new worker: it requeues the id and finishes the job.
+   submit '{"type":"noop"}'
+   moved=$(rcli lmove queue:jobs queue:processing RIGHT LEFT)
+   [ "$moved" = "$id" ] && ok "job $id left in queue:processing by a 'dead' worker" || bad "could not set up the orphaned job (moved '$moved')"
+   docker compose start worker >/dev/null 2>&1
+   status=$(wait_for "$id" 30)
+   [ "$status" = done ] && ok "a new worker recovered the orphaned job: status done" || bad "orphaned job: status '${status:-none}'"
+   [ "$(rcli llen queue:jobs)" = 0 ] && [ "$(rcli llen queue:processing)" = 0 ] && ok "both lists are empty at the end" || bad "lists not empty: jobs=$(rcli llen queue:jobs) processing=$(rcli llen queue:processing)"
+
+   [ "$fail" = 0 ] && echo "07_async: all checks passed" || echo "07_async: FAILED"
+   exit "$fail"
+   ```
+
+| Line(s) | What it does | If you change or remove it |
+|---|---|---|
+| `error`, `result_key`, `result_size`, `result_url` (`str \| None = None`) | Optional fields of the answer, filled once the worker has written them. | Without them the client cannot find the thumbnail or read why a job failed. |
+| `generate_presigned_url(...)` with `s3_public` | A link valid `PRESIGN_SECONDS` (300 s), signed for the public name `s3.localhost` so the host can use it. Local maths, no network call. | Signed with the internal client, the link would carry the host `s3:8333` (Lab 06, step 20). |
+| `response_model_exclude_none=True` | Drops `None` fields from the JSON. | Every answer would carry `"error": null, "result_key": null, ...`. |
+| `docker compose ps --status running -q worker` | Stops early with a clear message if the worker is not running. | Without it, the test would wait 30 s for a job nobody takes and then fail with "status queued". |
+| `rcli`, `field`, `ok()`/`bad()`, `trap cleanup EXIT` | The helpers and style of the other tests. The `trap` restarts the worker if the test stopped it, deletes the job records and the bucket objects it created, and the temporary folder. | Without the `trap` a failing run would leave the worker stopped and test objects behind. |
+| `docker run --rm --entrypoint python aws-local-lab-worker:0.1.0 -c "...Image.new..."` | Makes a 1200 × 800 PNG with Pillow in a throw-away container of the worker image (the host has no Pillow) and writes it to standard output. | |
+| `upload()` | Uploads a file; tries up to 5 times because the first upload after a fresh start can fail for a few seconds (Lab 06). | |
+| `submit()` and `wait_for()` | Submit a job (sets `$code` and `$id`, remembers the id for cleanup) and poll `GET /jobs/{id}` once a second until the status is `done` or `failed`, for at most N seconds. | Polling forever would hang `make test`; polling once would race the worker. |
+| `png_size()` | Reads the width and height from bytes 16 to 23 of a PNG file (the header). It prints `unknown` for a missing or too short file. | Without the check, a failed download crashed the test with `unbound variable` (see below). |
+| `result_size = 128x85`, `od -tx1` signature, `png_size` | The announced size, the real file signature (`89 50 4e 47 ...` = PNG) and the real size must all agree. | |
+| `grep -q 'result_url'` on a failed job | A failed job must **not** carry a result link. | |
+| `docker compose stop worker` right after the status is `processing` | A graceful stop in the middle of a `noop` job (2 s of work). The job must end `done` and the worker's exit code must be 0. | |
+| `rcli lmove queue:jobs queue:processing RIGHT LEFT` | Simulates a worker that died while holding a job: with the worker stopped, a new job's id is moved to the processing list by hand. `docker compose start worker` then has to requeue it and finish it. | |
+
+**The new answers, by hand first** (before writing the test; the key was uploaded with `POST /upload`):
+```text
+--- POST /jobs (unchanged shape):
+{"id":"ca68e825b97546a0a9e117c7c7c8ea34","type":"thumbnail","status":"queued","created_at":"2026-11-22T21:53:45.877410Z","payload":{"key":"originals/a
+--- GET /jobs/id once done:
+{"id":"ca68e825b97546a0a9e117c7c7c8ea34","type":"thumbnail","status":"done","created_at":"2026-11-22T21:53:45.877410Z","payload":{"key":"originals/a872c0a0eac54d8d959becfd6671be6e-big.png"},"result_key":"thumbnails/a872c0a0eac54d8d959becfd6671be6e-big-128.png","result_size":"128x85","result_url":"http://s3.localhost:8088/uploads/thumbnails/a872c0a0eac54d8d959becfd6671be6e-big-128.png?<signature params>"}
+--- download the result_url from the host:
+HTTP 200, 295 bytes
+PNG signature bytes: 89 50 4e 47 0d 0a 1a 0a
+--- a failed job shows its error:
+{"id":"ffc3d9e6479d430aae43a37151752235","type":"thumbnail","status":"failed","created_at":"2026-11-22T21:53:48.797204Z","payload":{"key":"originals/bc61d155109f458481a6be383ecc7476-notes.txt"},"error":"UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x72135b774d60>"}
+```
+(The first line is cut after 150 characters, and the signature parameters of the link are replaced by `<signature params>`.) A job that is `queued` looks exactly as before. A `done` job now carries `result_key`, `result_size` and a **`result_url`** that the host downloads at once (`HTTP 200`, 295 bytes, a PNG). A `failed` job carries an `error` and no result.
+
+**Run the test:**
+```bash
+bash tests/07_async.sh
+```
+```text
+Lab 07 - queues and workers (http://127.0.0.1:8088)
+  PASS  test image made: 1200x800
+  PASS  POST /upload: originals/acec5d2200d241728baedc4d929e4683-big.png
+  PASS  POST /jobs: 202 Accepted, status queued
+  PASS  the worker finished the job: status done
+  PASS  result_key thumbnails/acec5d2200d241728baedc4d929e4683-big-128.png
+  PASS  result_size 128x85 (1200x800 shrunk to fit 128x128)
+  PASS  the thumbnail downloads from the host with the presigned URL: 200
+  PASS  it is a PNG
+  PASS  its real size is 128x85, as announced
+  PASS  a text file is not an image: status failed
+  PASS  the answer says why: UnidentifiedImageError: cannot identify ...
+  PASS  a failed job has no result_url
+  PASS  stopped during a job: the job still finished (done)
+  PASS  the worker exited with code 0 (graceful shutdown)
+  PASS  job 5a7bfb7a80e345079c82e5ad24620c79 left in queue:processing by a 'dead' worker
+  PASS  a new worker recovered the orphaned job: status done
+  PASS  both lists are empty at the end
+07_async: all checks passed
+```
+The run took 21 seconds (`time`: `real 0m21.046s`). It covers, in order: the **happy path** (upload, job, poll, download, three checks that the downloaded file is the announced thumbnail), the **failure path**, a **graceful stop** and the **recovery of an orphaned job**.
+
+**Make it fail on purpose.** Two ways to break the pipeline:
+```bash
+S3_PUBLIC_ENDPOINT_URL=http://s3:8333 docker compose up -d --wait api    # the API signs links for the Docker-only host
+bash tests/07_async.sh
+docker compose up -d --wait api                                         # put it back
+docker compose stop worker; bash tests/07_async.sh; docker compose start worker
+```
+```text
+  FAIL  thumbnail download: expected 200, got 000
+  FAIL  not a PNG (first bytes )
+  FAIL  real size unknown, announced 128x85
+07_async: FAILED
+  FAIL  the worker service is not running: start the lab with 'make up' first
+```
+(Lines filtered to the failures.) With the wrong public address the job itself still works, but the **download** fails, and three checks say so. With the worker stopped the test refuses to start. A test that never fails proves nothing.
+
+**A bug in the test, found this way.** The first version of `png_size` assumed the downloaded file was a PNG. When the download failed (the "wrong public address" case above) the helper crashed, twice, and the test printed `tests/07_async.sh: line 75: $2: unbound variable` between the `FAIL` lines. It now prints `unknown` when the file is missing or too short, which is what the output above shows (`real size unknown`).
+
+**Does it clean up after itself?** After the first run I counted 3 objects in the bucket and 2 job records in Redis, and first suspected the test. They were the leftovers of my **manual** checks (the `a872…` image and thumbnail, a text file, two job records), not the test's. After deleting those, a normal run ended with:
+```text
+bucket objects: 0, job keys in Redis: 0, lists: jobs=0 processing=0, worker: Up 14 seconds
+```
+The test deletes what it creates and leaves the worker running. (Manual experiments leave traces: clean up after them, as in the Clean up section.)
+
+**Regression check — the whole suite:**
+```bash
+make test
+```
+```text
+== tests/02_failover.sh
+  FAIL  only 59 of 60 requests succeeded with one replica dead
+02_failover: FAILED
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+== tests/05_cache.sh
+05_cache: all checks passed
+== tests/06_storage.sh
+  wait  upload attempt 1 answered HTTP 502, trying again
+06_storage: all checks passed
+== tests/07_async.sh
+07_async: all checks passed
+```
+(Trimmed to the headings and summary lines; this **first** run ended with exit code 2.) The only failure is the intermittent `02_failover` of Lab 02 (see its Troubleshooting), which came up again; the new test and everything else passed. A **second** run, a few minutes later, was green in all seven scripts and `make` exited with code 0. To get closer to a cause, the failover test was run 10 times with the resolver of `lb/nginx.conf` set to `valid=5s` (the lab's value): **2 failures**; and 10 times with `valid=60s`: **0 failures** (with the original file restored afterwards). It is only a **lead**, not a proof (10 runs each; about 1 run in 4 failed over the other batches), but it fits an explanation: Nginx asks Docker's DNS again every 5 seconds and the 1-second connect timeout to the killed replica can overlap one of these refreshes. Nothing in the load balancer was changed in this step.
+
+**What just happened:**
+- The whole pipeline now has a **repeatable proof**: one command shows that a file uploaded through the API becomes, asynchronously, a thumbnail the client can download.
+- A **polling API** needs the answer to carry the **result**: the `result_url` is what turns "status done" into something the client can use. A failed job needs an `error` for the same reason.
+- The test checks the **behaviour you only get from the design**: failure is contained (`failed` with a reason), a stop is graceful (exit code 0, job finished), a crash does not lose work (the orphaned job is recovered).
+- It also shows the **limits of tests**: a flaky neighbour (`02_failover`) can turn `make test` red for reasons that have nothing to do with the change; the right reaction is to measure it, not to ignore it or to hide it with retries.
+
+## 5. Verify it works
+With the lab up (`make up`; if port 80 is busy, set `LB_HOST_PORT` and `S3_PUBLIC_ENDPOINT_URL` in `.env`, as in Lab 06) and the worker running:
+```bash
+make test
+```
+All seven scripts must print `all checks passed` and `make` must exit with code 0 (if only `02_failover` fails, with `59 of 60`, run it again: it is the known intermittent failure of Lab 02). To look by hand as well (replace `8088` by your port):
+```bash
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'                         # worker: Up
+curl -s -F "file=@some.png;type=image/png" localhost:8088/upload                      # note the "key"
+curl -s -X POST localhost:8088/jobs -H 'Content-Type: application/json' -d '{"type":"thumbnail","payload":{"key":"<the key>"}}'
+curl -s localhost:8088/jobs/<the id>                                                  # "queued", "processing", then "done" + result_url
+curl -s -o thumb.png "<the result_url>"                                               # the thumbnail, downloaded from the host
+docker compose logs worker                                                            # picked up ... done {...}
+```
+
+## 6. Troubleshooting
 | Symptom | Cause | Fix |
 |---|---|---|
 | After `docker kill` the worker is **not** started again by `restart: unless-stopped` (`docker compose ps worker` prints nothing, `RestartCount` stays 0) | Docker applies a restart policy when the container's process exits by itself, once it has started successfully (a start counts as successful after 10 seconds of running). `docker kill` and `docker stop` are deliberate stops. | Start it yourself (`docker compose start worker`). A real crash (exit code 1, out of memory) is restarted: see step 23, Check 5. |
 | `make test` fails in `tests/06_storage.sh` with `upload failed (HTTP 000)` after the worker was added | Right after `04_persistence.sh` restarts the stack, the first upload can answer `502` after about 10 s (`Read timeout on endpoint URL` in the API log) and the test's 10 s curl limit gave up. | `tests/06_storage.sh` tries the first upload up to 5 times (commit `dec7783`). |
 | A job stays `processing` forever | Its worker died and no worker has started since: the id waits in `queue:processing`. | Start a worker: at start-up it requeues the id and redoes the job (step 23, Check 3). |
+| `tests/07_async.sh: line N: $2: unbound variable` between the `FAIL` lines | The first version of `png_size` assumed the downloaded file was a PNG. | The helper prints `unknown` for a missing or too short file (step 25). |
+| `07_async` ends with `FAIL  the worker service is not running` | The `worker` container is stopped (for example after `docker compose stop worker`). | `docker compose start worker` (or `make up`). |
+| `GET /jobs/{id}` is `done` but has no `result_url` | Only jobs that write a `result_key` have one: `noop` jobs have no result. | Use a `thumbnail` job. |
+| A job is `failed` with `UnidentifiedImageError` | The uploaded file is not an image (or a format Pillow cannot read). | Upload a real PNG or JPEG; the `error` of the job says what was wrong. |
+| `make test` fails only in `02_failover.sh` with `59 of 60` | The known intermittent failure of Lab 02: one `502` right after the replica is killed. About 1 run in 4 here; not related to Lab 07. | Run it again; see Lab 02 Troubleshooting for the measurements and the lead (`resolver ... valid=`). |
+
+## 7. Going to real AWS
+- **What changes:** the **queue** becomes an **SQS queue** (`aws_sqs_queue`, Lab 13 does this against an emulator). The API calls `SendMessage` instead of `LPUSH`; the worker calls `ReceiveMessage` (with **long polling**, up to 20 s) and `DeleteMessage` instead of `BLMOVE` and `LREM`. The **visibility timeout** replaces the processing list: pick a value longer than the longest job, and the message reappears by itself if the worker dies. A **dead-letter queue** with a `maxReceiveCount` (for example 3) receives the messages that keep failing, which is the retry policy this lab does not have.
+- **Who runs the worker:** an **ECS service** on Fargate (the `worker` container as is, with a task role) that **scales on the queue depth** (the metric `ApproximateNumberOfMessagesVisible` with target tracking), or a **Lambda function** triggered by the queue (an **event source mapping**: AWS polls for you and calls the function with batches). Several workers are normal in AWS: the visibility timeout makes each message invisible to the others while it is being worked on, which the lab's start-up requeue (one worker only) cannot do.
+- **Who creates the jobs:** often nobody calls an API: an **S3 event notification** sends a message to SQS (or triggers Lambda) when an object lands under `originals/`, so the pipeline starts by itself.
+- **The job status:** SQS has none. Keep it in **DynamoDB** (a table keyed by the job id, with a TTL attribute, like the 24 hours of the Redis hash) and return the thumbnail through a presigned URL, exactly as `result_url` does here.
+- **Security:** an **IAM role** for the worker allowing only `sqs:ReceiveMessage`, `sqs:DeleteMessage` on that queue and `s3:GetObject` on `originals/*`, `s3:PutObject` on `thumbnails/*`: no keys in environment variables.
+- **What this lab does not simulate:** durable storage of messages in several zones (the Redis here loses them on restart, see step 22), message retention, a dead-letter queue, per-message visibility timeouts and several workers, FIFO queues with ordering guarantees, encryption, and the monitoring of queue depth and age in CloudWatch.
+- **Rough cost:** SQS bills per **million requests** (a send, a receive and a delete each count), with a free monthly allowance; Lambda bills per request and per millisecond of run time; Fargate bills per vCPU-hour and GB-hour while the worker runs. A lab-sized pipeline costs cents. See the [SQS pricing](https://aws.amazon.com/sqs/pricing/) and [Lambda pricing](https://aws.amazon.com/lambda/pricing/) pages; prices change.
+
+## 8. Clean up
+```bash
+# empty the queue and the job records (only needed after manual experiments; the tests clean up after themselves)
+docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli del queue:jobs queue:processing'
+# delete the uploaded files and thumbnails
+docker compose run --rm --no-deps -T --entrypoint sh s3-init -c 'aws --endpoint-url http://s3:8333 s3 rm "s3://$S3_BUCKET/" --recursive'
+docker compose stop worker      # a graceful stop: it finishes its current job first
+make down                       # removes the containers and networks; the bucket's files stay in the s3data volume
+make clean                      # deletes ALL volumes (Postgres and s3data); it asks you to type "yes" first - run it yourself
+```
+The queue and the job records live **in Redis without a volume**, so any `make down` empties them (step 22, Check 6): jobs do not survive a restart in this lab.
+
+## 9. Check your understanding
+1. Why does `POST /jobs` answer `202 Accepted` and not `200 OK` or `201 Created`? What must the client do next?
+2. What is the difference between `RPOP` and `BLMOVE queue:jobs queue:processing` for taking a job? What does the worker do afterwards, and why?
+3. The worker is killed with `docker kill` in the middle of a job. What happens to the job, and what is this guarantee called? What does it ask of the job's code?
+4. What does `docker stop` do to the worker, and why did the test find the exit code to be 0?
+5. In AWS, what replaces the processing list, the status hash and the start-up requeue?
+
+<details><summary>Answers</summary>
+
+1. `202` means "accepted for processing, not done yet": the work has not happened and will be done later. The client keeps the job's `id` and **polls** `GET /jobs/{id}` until the status is `done` (and then uses the `result_url`) or `failed` (and reads the `error`).
+2. `RPOP` removes the id: if the worker dies right after, the job is lost. `BLMOVE` **moves** the id to the processing list (and waits up to 2 s if the queue is empty), so the id survives a crash. After the work the worker **acknowledges** with `LREM`, which removes the id from the processing list for good.
+3. The id stays in `queue:processing`; the next worker starts, requeues it, and redoes the job from the start. This is **at-least-once delivery**: a job runs at least once, possibly twice. Its code must be **idempotent** (running it again does no harm), like the thumbnail whose key is always the same.
+4. `docker stop` sends `SIGTERM`. The handler only sets a flag: the worker finishes the current job, then leaves its loop and exits normally, so the exit code is 0 (a `SIGKILL` would give 137).
+5. The **visibility timeout** (and the dead-letter queue) replace the processing list and the requeue; the status moves to a database such as **DynamoDB**; and several workers can run safely, because each message is hidden from the others while it is being worked on.
+
+</details>
+
+## 10. Exercises (optional)
+- Slow the work down: add `WORK_SECONDS=10` to `.env`, `docker compose up -d worker`, submit three `noop` jobs and watch `queue:jobs`, `queue:processing` and the statuses with `redis-cli`. Then `docker compose stop worker` after 3 seconds and compare how long it takes with the 30 s grace period.
+- Start **two** workers (`docker compose up -d --scale worker=2`), submit ten jobs and read the logs. Then kill one worker mid-job and start another: what does the start-up requeue do to the job the **other** worker is still working on? (This is the limit named in step 23.)
+- Add a **retry**: when a handler fails with a temporary error (an S3 timeout), put the id back in the queue up to 3 times, counting attempts in the job's hash, and mark the job `failed` after that. What would a dead-letter queue add?
+- Add a second job type (for example `checksum`: SHA-256 of an object) as one function and one entry in `HANDLERS`, and extend `tests/07_async.sh` with it.
+- Measure the pipeline: submit 50 `thumbnail` jobs for one image in a loop, and compute how long until the last one is `done`. Where is the bottleneck, and what would you scale?
+
+## 11. Further reading
+- [Amazon SQS: what it is](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html), [visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html) and [dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html) (AWS)
+- [Using AWS Lambda with Amazon SQS](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) and [S3 event notifications](https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventNotifications.html) (AWS)
+- [Redis: `BLMOVE`](https://redis.io/docs/latest/commands/blmove/) and [`LMOVE`](https://redis.io/docs/latest/commands/lmove/), and the reliable-queue pattern (Redis)
+- [Pillow: `Image.thumbnail`](https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.thumbnail) and [`ImageOps.exif_transpose`](https://pillow.readthedocs.io/en/stable/reference/ImageOps.html#PIL.ImageOps.exif_transpose) (Pillow)
+- [FastAPI: response model, `response_model_exclude_none`](https://fastapi.tiangolo.com/tutorial/response-model/) (FastAPI)
