@@ -394,4 +394,4 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 23 | Databases 08 - Connection pooling | AWSLAB-110 | `58439b0` (+ fix `5e6e23b`) | PASS WITH NOTES, notes fixed |
 | step 23 | Nginx 02 - Config structure, server and location matching | AWSLAB-111 | `0e4ae10` (+ fix `49a9dac`) | PASS WITH NOTES, notes fixed |
 | step 24 | Databases 09 - Backups: pg_dump and restore | AWSLAB-112 | `ad39160` (+ fix `6de5fc8`) | PASS WITH NOTES, notes fixed |
-| step 24 | Nginx 03 - proxy_pass and proxy headers | AWSLAB-113 | `c0753ff` (+ fix `6de5fc8`) | PASS WITH NOTES, notes fixed |
+| step 24 | Nginx 03 - proxy_pass and proxy headers | AWSLAB-113 | `c0753ff` (+ fix `110591f`) | PASS WITH NOTES, notes fixed |
