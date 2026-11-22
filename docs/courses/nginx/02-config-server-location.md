@@ -113,13 +113,15 @@ http {
 ## The commands
 | Command / flag | Meaning |
 |---|---|
-| `docker run -d --rm --name ngx02 -p 127.0.0.1:18110:8080 -v "$D/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.30.6-alpine` | Start Nginx with your config (`-v ... :ro`, [Docker 08](../docker/08-volumes-and-bind-mounts.md)) and publish its port 8080 on your machine only (`-p`, [Networking 05](../networking/05-nat-and-port-forwarding.md)). |
+| `docker run -d --rm --name ngx02 -p 127.0.0.1:18110:8080 -v "$D/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.30.6-alpine` | Start Nginx with your config: `-d` in the background, `--rm` delete the container when it stops, `--name` give it a name, `-v ... :ro` mount your file read-only ([Docker 08](../docker/08-volumes-and-bind-mounts.md)), `-p` publish port 8080 on your machine only ([Networking 05](../networking/05-nat-and-port-forwarding.md)). |
+| `D=$(pwd -W)` and `MSYS_NO_PATHCONV=1` | Git Bash on Windows: `pwd -W` gives the current folder as a Windows path (Docker needs it for `-v`), and the switch stops Git Bash from rewriting `/etc/nginx/...` into a Windows path. |
 | `curl -s URL` | Quiet request: print only the body. |
 | `curl -s -H "Host: other.local" URL` | Send a chosen `Host` header: this is how you test a `server_name` without changing DNS. |
 | `curl -si URL \| grep -i '^x-'` | `-i` also prints the response headers; `grep -i '^x-'` keeps the lines starting with `x-`. |
 | `nginx -t` | **T**est the configuration file: syntax and references, without starting anything. Prints `test is successful` or the line of the error. |
 | `docker exec ngx02 nginx -t` | The same inside the running container. |
 | `printf '%-18s -> ' "$path"` | Print the path padded to 18 characters, so the answers line up. |
+| `tr -d ''`, `2>&1`, `>/dev/null` | Delete the carriage returns of HTTP headers; send error messages to the same place as normal output; throw the output away. |
 
 ## Hands-on
 Throw-away containers (`nginx:1.30.6-alpine`). Make a folder with `nginx.conf` (above), `broken.conf` (a copy of a tiny config with a typo, shown below) and this `run.sh`:
