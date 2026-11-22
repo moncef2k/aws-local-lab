@@ -5,7 +5,7 @@
 #  2. a job that cannot work (the file is not an image) ends as "failed" with a reason, no result;
 #  3. "docker compose stop worker" in the middle of a job lets the job finish (exit code 0);
 #  4. a job left in the processing list by a dead worker is requeued and finished by the next worker.
-# Needs the stack to be up (make up). Takes about 40 seconds. The test objects are deleted at the end.
+# Needs the stack to be up (make up). Takes about 25 seconds. The test objects are deleted at the end.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -35,7 +35,7 @@ keys=()      # bucket objects to delete at the end
 job_ids=()   # job records to delete at the end
 cleanup() {
   docker compose start worker >/dev/null 2>&1   # in case the test stopped it and failed half way
-  for j in "${job_ids[@]}"; do rcli del "job:$j" >/dev/null; done
+  for j in ${job_ids[@]+"${job_ids[@]}"}; do rcli del "job:$j" >/dev/null; done   # (safe when the array is still empty)
   rm -rf "$tmp"
   if [ "${#keys[@]}" -gt 0 ]; then
     docker compose run --rm --no-deps -T --entrypoint sh s3-init -c \
@@ -107,7 +107,7 @@ sig=$(od -An -tx1 -N8 "$tmp/thumb.png" 2>/dev/null | tr -d ' \n')
 [ "$(png_size "$tmp/thumb.png")" = "$rsize" ] && ok "its real size is $rsize, as announced" || bad "real size $(png_size "$tmp/thumb.png"), announced $rsize"
 
 # 4. A job that cannot work ends as failed, with a reason and no result.
-txt=$(upload notes.txt text/plain); keys+=("$txt")
+txt=$(upload notes.txt text/plain); [ -n "$txt" ] && keys+=("$txt")
 submit "{\"type\":\"thumbnail\",\"payload\":{\"key\":\"$txt\"}}"
 status=$(wait_for "$id" 30)
 curl -s --max-time 5 "$url/jobs/$id" > "$tmp/failed.json"
