@@ -10,7 +10,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 | # | Module | Status | First used in the labs |
 |---|---|---|---|
 | 01 | [What a web server and a reverse proxy are](./01-web-server-and-reverse-proxy.md) | ✅ written | Lab 02, step 4 |
-| 02 | Config structure, `server` and `location` matching | ⬜ planned | Lab 02, step 4 |
+| 02 | [Config structure, `server` and `location` matching](./02-config-server-location.md) | ✅ written | Lab 02, step 4 |
 | 03 | `proxy_pass` and proxy headers | ⬜ planned | Lab 02, step 4 |
 | 04 | Upstreams and load-balancing methods | ⬜ planned | Lab 02, step 5 |
 | 05 | Timeouts, retries and passive health checks | ⬜ planned | Lab 02, step 6 |

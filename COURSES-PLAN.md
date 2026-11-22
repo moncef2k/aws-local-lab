@@ -115,7 +115,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
 | 01 | What a web server and a reverse proxy are | `01-web-server-and-reverse-proxy.md` | step 4 (Lab 02) | step 22 | AWSLAB-109 | `lb/nginx.conf` in front of the API |
-| 02 | Config structure, `server` and `location` matching | `02-config-server-location.md` | step 4 (Lab 02) | step 23 | - | `events`, `http`, `server`, `upstream` blocks; routing `/health`, `/whoami`; host-based routing later (D4) |
+| 02 | Config structure, `server` and `location` matching | `02-config-server-location.md` | step 4 (Lab 02) | step 23 | AWSLAB-111 | `events`, `http`, `server`, `upstream` blocks; routing `/health`, `/whoami`; host-based routing later (D4) |
 | 03 | `proxy_pass` and proxy headers | `03-proxy-pass-and-headers.md` | step 4 (Lab 02) | step 24 | - | `proxy_pass http://api`, `Host`, `X-Forwarded-*` |
 | 04 | Upstreams and load-balancing methods | `04-upstream-and-load-balancing.md` | step 5 (Lab 02) | step 25 | - | `upstream`, `zone`, `server ... resolve`, 3 replicas |
 | 05 | Timeouts, retries and passive health checks | `05-timeouts-retries-failover.md` | step 6 (Lab 02) | step 26 | - | `max_fails`, `fail_timeout`, `proxy_next_upstream` |
@@ -352,7 +352,8 @@ back and the plan updated.
 16. [x] Step 20 modules written (FastAPI 04 and Networking 04).
 17. [x] Step 21 modules written (Databases 06 and Networking 05).
 18. [x] Step 22 modules written (Databases 07 and Nginx 01).
-19. [ ] Next modules: see "Schedule by lab step" (step 23: Databases 08 and Nginx 02).
+19. [x] Step 23 modules written (Databases 08 and Nginx 02).
+20. [ ] Next modules: see "Schedule by lab step" (step 24: Databases 09 and Nginx 03).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
