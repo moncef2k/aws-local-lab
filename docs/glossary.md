@@ -38,6 +38,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Graceful degradation** | Designing a system so that when an optional part fails it gets slower or simpler instead of failing completely. Here: with Redis down the API answers from the database and marks the reply `X-Cache: BYPASS`. | Local: `read_note` in `api/main.py` | 05 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
+| **Host header** | The HTTP header that carries the name the client typed in the URL (`Host: s3.localhost:8088`). A server or proxy with several sites uses it to choose one, and a presigned URL's signature covers it. | Local: Nginx `server_name`, `proxy_set_header Host $http_host` | 06 |
 | **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
 | **IAM** | AWS users, roles and permissions. | Not simulated in this lab (fake credentials only) | 13 |
 | **IaC** (Infrastructure as Code) | Describing infrastructure in files that a tool applies, instead of clicking in a console. | AWS: CloudFormation · Local: Terraform | 13 |
@@ -60,7 +61,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
-| **Presigned URL** | A temporary link that gives access to one private object, without credentials. | AWS: S3 presigned URL · Local: SeaweedFS | 06 |
+| **Presigned URL** | A temporary link that gives access to one private object, without credentials. The link carries a signature computed from the secret key, the object, the expiry **and the host name**: change any of them and the signature no longer matches (`SignatureDoesNotMatch`). | AWS: S3 presigned URL · Local: SeaweedFS, signed for `s3.localhost` | 06 |
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
@@ -68,10 +69,11 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
+| **Name-based routing** | One address and port serving several sites: the proxy reads the `Host` header and picks the matching `server` block. The unmatched requests go to the `default_server`. | AWS: ALB listener rules on the host header · Local: Nginx `server_name` + `default_server` | 06 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |
-| **S3 endpoint** | The address of the S3 API. SDKs and the AWS CLI use `amazonaws.com` by default; `--endpoint-url` points them at another server. | Local: `http://s3:8333` | 06 |
+| **S3 endpoint** | The address of the S3 API. SDKs and the AWS CLI use `amazonaws.com` by default; `--endpoint-url` points them at another server. | Local: `http://s3:8333` inside Docker, `http://s3.localhost` from your machine | 06 |
 | **SeaweedFS** | An open-source storage system with an S3-compatible API; the lab uses it as the local S3 because MinIO no longer publishes container images. | Local stand-in for S3 | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |

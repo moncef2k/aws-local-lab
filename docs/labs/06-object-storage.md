@@ -1,9 +1,9 @@
 # Lab 06 — Object storage (S3)
 
 > **AWS equivalent:** Amazon S3 (buckets, objects, access keys, presigned URLs)  ·  **Time:** ~75 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commits `0cc9b19` (step 18), `b2872f7` (step 19) and `4d7933c` (step 20) on `dev`
+> **Builds on:** [Lab 05](./05-caching.md)  ·  **Reference solution:** commits `0cc9b19` (step 18), `b2872f7` (step 19), `4d7933c` (step 20) and `c2a4afb` (step 21) on `dev`
 
-> **Status:** in progress. Steps 18–20 are written. Step 21 (storage test) and the closing sections (5–11) come next.
+> **Status:** done. Steps 18–21 and the closing sections are written.
 
 ## 1. What you will learn
 - Explain what **object storage** is, and how it differs from a disk and from a database.
@@ -11,6 +11,8 @@
 - Run an S3-compatible server in a container on the private network, with its files in a volume and fake credentials from `.env`.
 - Write a **one-shot bootstrap job** that creates the bucket, and make it safe to run twice.
 - Use the real **AWS CLI** against a local endpoint, and see that a wrong secret key is refused.
+- Accept an upload through the API (boto3) and hand out a **presigned URL** that works from your machine, through a public name routed by the load balancer.
+- Explain why the signature covers the `Host` header, and write a test that checks both what must work and what must be refused.
 
 ## 2. Theory
 
@@ -69,7 +71,7 @@ flowchart LR
   lb -->|"step 20: Host s3.localhost (GET/HEAD only)"| s3
   api -. "step 19: upload / download" .-> s3
   init -->|"create the bucket, then exit"| s3
-  you -. "no route, no port: blocked" .-> s3
+  you -. "direct: no route, no published port" .-> s3
 ```
 
 ## 3. Prerequisites
@@ -79,6 +81,7 @@ flowchart LR
   printf '\nS3_ACCESS_KEY=lab-access-key\nS3_SECRET_KEY=%s\n' "$(openssl rand -hex 16)" >> .env
   ```
   (or add the two lines by hand; `.env.example` shows them). `.env` is gitignored and never committed.
+- If port 80 is busy on your machine (step 20), also set `LB_HOST_PORT` and the matching `S3_PUBLIC_ENDPOINT_URL` in `.env`, for example `LB_HOST_PORT=8088` and `S3_PUBLIC_ENDPOINT_URL=http://s3.localhost:8088` (same port in both).
 
 ## 4. Steps
 
@@ -693,9 +696,222 @@ make test            # with LB_HOST_PORT=8088 exported
 - Compare with AWS: there is nothing to configure there, because `s3.amazonaws.com` is already public DNS; the lab has to recreate a public name and a route to get the same effect.
 - Still open for step 21: an automatic test (`tests/06_storage.sh`) that does what Check 1 does by hand.
 
-## 5–11. To be completed at the end of Lab 06
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 21). The problems met so far:
+### Step 21 — The storage test
+**Why:** steps 19 and 20 were checked by hand. A test turns those checks into one command that anyone (and you, in six months) can re-run, and that goes **red** when something breaks. It also keeps the promises that are easy to break by accident: the link must work from the host, a changed signature must be refused, a link signed for the wrong host must be refused. Like the other tests (`tests/02` to `tests/05`) it needs the lab to be up and finds the load balancer's port by itself with `docker compose port lb 80`.
 
+**What the test does**, in order: upload 200,000 random bytes → check the key and that the URL uses the **public** host → download the URL **from the host** and compare SHA-256 checksums → refuse a changed signature, no signature, and a `PUT` → refuse a URL signed for the internal host → refuse bad input (no `file` field, a 6,000,000-byte file, a hostile file name). At the end it deletes its own objects from the bucket.
+
+**Do it:** create `tests/06_storage.sh` (the whole file):
+```bash
+#!/usr/bin/env bash
+# Lab 06 test: object storage. Uploads a random file through POST /upload, downloads it from the HOST
+# with the presigned URL the API returned (through the load balancer, host name s3.localhost) and
+# compares the SHA-256 checksums. Also checks what must NOT work: a tampered or missing signature,
+# a URL signed for the wrong host, a PUT on the public door, an oversized file, a missing field and a
+# hostile file name.
+# Needs the stack to be up (make up). Takes about 15 seconds. The test objects are deleted at the end.
+set -u
+cd "$(dirname "$0")/.."
+
+fail=0
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; fail=1; }
+
+addr=$(docker compose port lb 80 2>/dev/null)
+if [ -z "$addr" ] || [ "$addr" = ":0" ]; then
+  echo "  FAIL  the lb service is not running: start the lab with 'make up' first"
+  exit 1
+fi
+url="http://${addr/0.0.0.0/127.0.0.1}"
+
+echo "Lab 06 - object storage ($url)"
+
+# Work in a temporary folder and give curl relative file names: the Windows curl cannot read
+# Git Bash paths such as /tmp/x (see Lab 06, troubleshooting).
+tmp=$(mktemp -d)
+keys=()
+cleanup() {
+  rm -rf "$tmp"
+  # Delete the test objects with the AWS CLI of the s3-init service (same endpoint, same keys).
+  if [ "${#keys[@]}" -gt 0 ]; then
+    docker compose run --rm --no-deps -T --entrypoint sh s3-init -c \
+      'for k; do aws --endpoint-url http://s3:8333 s3 rm "s3://$S3_BUCKET/$k" >/dev/null; done' sh "${keys[@]}" >/dev/null 2>&1
+  fi
+}
+trap cleanup EXIT
+in_tmp() { ( cd "$tmp" && "$@" ); }
+field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }   # a string field of the JSON answer
+
+# 1. Upload 200,000 random bytes.
+in_tmp sh -c 'head -c 200000 /dev/urandom > blob.bin'
+sum_before=$(sha256sum "$tmp/blob.bin" | cut -d' ' -f1)
+code=$(in_tmp curl -s --max-time 10 -o up.json -w '%{http_code}' -F "file=@blob.bin;type=application/octet-stream" "$url/upload")
+resp=$(cat "$tmp/up.json")
+key=$(echo "$resp" | field key)
+link=$(echo "$resp" | field url)
+if [ "$code" = 201 ] && [ -n "$key" ] && [ -n "$link" ]; then
+  keys+=("$key")
+  ok "POST /upload: 201, key $key"
+else
+  echo "  FAIL  upload failed (HTTP $code): $resp"
+  exit 1
+fi
+case "$key" in originals/*) ok "the key is under the originals/ prefix" ;; *) bad "unexpected key prefix: $key" ;; esac
+
+# 2. The link must be usable from the host: public name, not the Docker-only name "s3".
+public_base=$(echo "$link" | cut -d/ -f1-3)
+case "$public_base" in
+  http://s3.localhost*) ok "the URL points at the public endpoint ($public_base)" ;;
+  *) bad "the URL host is '$public_base': set S3_PUBLIC_ENDPOINT_URL (with the port of LB_HOST_PORT)" ;;
+esac
+
+# 3. Download with the presigned URL, from the host, and compare the bytes.
+dcode=$(in_tmp curl -s --max-time 10 -o down.bin -w '%{http_code}' "$link")
+sum_after=$(sha256sum "$tmp/down.bin" 2>/dev/null | cut -d' ' -f1)
+[ "$dcode" = 200 ] && ok "GET of the presigned URL from the host: 200" || bad "GET of the presigned URL: expected 200, got $dcode"
+[ -n "$sum_after" ] && [ "$sum_before" = "$sum_after" ] \
+  && ok "downloaded bytes are identical (sha256 ${sum_before:0:16}...)" || bad "checksum differs: ${sum_before:0:16} vs ${sum_after:0:16}"
+
+# 4. The signature protects the object.
+last=${link: -1}; [ "$last" = 0 ] && new=1 || new=0
+c=$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' "${link%?}$new")
+[ "$c" = 403 ] && ok "a modified signature is refused (403)" || bad "modified signature: expected 403, got $c"
+c=$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' "${link%%\?*}")
+[ "$c" = 403 ] && ok "the object address without a signature is refused (403)" || bad "no signature: expected 403, got $c"
+c=$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' -X PUT "$link")
+[ "$c" = 403 ] && ok "PUT on the public door is refused by the load balancer (403)" || bad "PUT: expected 403, got $c"
+
+# 5. A link signed for the internal host (s3:8333) must not work on the public host: the signature covers the Host header.
+internal=$(docker compose exec -T api python -c "
+import main, sys
+print(main.s3.generate_presigned_url('get_object', Params={'Bucket': main.S3_BUCKET, 'Key': sys.argv[1]}, ExpiresIn=60))" "$key" 2>/dev/null | tr -d '\r')
+case "$internal" in
+  http://s3:8333/*)
+    c=$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' "$public_base${internal#http://s3:8333}")
+    [ "$c" = 403 ] && ok "a URL signed for s3:8333 is refused on $public_base (403)" || bad "URL signed for the wrong host: expected 403, got $c" ;;
+  *) bad "could not create the internal URL: '$internal'" ;;
+esac
+
+# 6. Bad input.
+c=$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' -X POST "$url/upload" -F "other=x")
+[ "$c" = 422 ] && ok "upload without the 'file' field: 422" || bad "missing field: expected 422, got $c"
+in_tmp sh -c 'head -c 6000000 /dev/urandom > big.bin'
+body=$(in_tmp curl -s --max-time 20 -w ' [%{http_code}]' -F "file=@big.bin" "$url/upload")
+case "$body" in
+  *"file too large"*"[413]") ok "a 6,000,000-byte file: 413 from the API (over its 5 MB limit)" ;;
+  *) bad "6,000,000-byte file: expected the API's 413, got: ${body:0:120}" ;;
+esac
+in_tmp sh -c 'echo hello > hello.txt'
+hkey=$(in_tmp curl -s --max-time 10 -F 'file=@hello.txt;filename=../../etc/pass wd.txt' "$url/upload" | field key)
+[ -n "$hkey" ] && keys+=("$hkey")
+case "$hkey" in
+  originals/*-pass_wd.txt) ok "hostile file name cleaned: $hkey" ;;
+  *) bad "hostile file name: unexpected key '${hkey:-none}'" ;;
+esac
+
+[ "$fail" = 0 ] && echo "06_storage: all checks passed" || echo "06_storage: FAILED"
+exit "$fail"
+```
+
+| Line(s) | What it does | If you change or remove it |
+|---|---|---|
+| `set -u`, `ok()` / `bad()`, `fail=0` | Same helpers as the other tests: `PASS`/`FAIL` lines, and a final exit code that is `1` if any check failed. | Without `fail`, a failed check would still end with exit code 0 and `make test` would stay green. |
+| `addr=$(docker compose port lb 80)` | Asks Compose where the load balancer is published, so the test follows `LB_HOST_PORT` without reading `.env`. | A hard-coded `localhost:80` breaks as soon as you change the port. |
+| `tmp=$(mktemp -d)`, `in_tmp`, relative file names | Works in a temporary folder and gives `curl` **relative** names: the Windows `curl.exe` cannot read Git Bash paths like `/tmp/x` (Troubleshooting). | With `-F "file=@$tmp/blob.bin"` the upload fails with `curl: (26)`. |
+| `field() { sed ... }` | Pulls one string field out of the JSON answer (`key`, `url`), like the other tests do for `id`. No `jq` needed. | |
+| `head -c 200000 /dev/urandom`, `sha256sum` | Random bytes cannot match by luck; the checksum identifies them exactly. | A text file such as `hello` could hide a mix-up that only shows on binary data. |
+| `case "$public_base" in http://s3.localhost*)` | Fails with a hint if the URL still carries the Docker-only host. | Without it, a wrong `S3_PUBLIC_ENDPOINT_URL` only shows up as a confusing download error. |
+| `curl ... "$link"` then `sha256sum` | The real check of the step: the host downloads the object with only the URL and gets the same bytes. | |
+| `last=${link: -1}` ... `${link%?}$new` | Changes the last character of the URL (the signature) to a different one. | Always writing `0` would not change a signature that already ends in `0`. |
+| `${link%%\?*}` | The URL without its query string: the object address with no signature. | |
+| `-X PUT "$link"` | A method the public door does not allow: Nginx's `limit_except` answers `403`. | |
+| `docker compose exec -T api python -c "... main.s3.generate_presigned_url ..."` | Builds a link signed for `http://s3:8333` with the API's own client, then sends it to the public host. | Without this check nobody would notice if the API went back to signing with one client for both addresses. |
+| `-F "other=x"`, `big.bin`, `filename=../../etc/pass wd.txt` | The three bad inputs of step 19: `422`, the API's own `413` (6,000,000 bytes pass Nginx's 6 MB but not the API's 5 MB limit) and a cleaned file name. | |
+| `trap cleanup EXIT`, `keys=()`, `docker compose run --rm --no-deps -T --entrypoint sh s3-init ...` | Whatever happens, deletes the test objects with the AWS CLI of the `s3-init` service (same endpoint and keys) and the temporary folder. | Every run would leave objects in the bucket. |
+
+**Run it:**
+```bash
+bash tests/06_storage.sh
+```
+```text
+Lab 06 - object storage (http://127.0.0.1:8088)
+  PASS  POST /upload: 201, key originals/accd2059d54640acae3f7eb8067bf26b-blob.bin
+  PASS  the key is under the originals/ prefix
+  PASS  the URL points at the public endpoint (http://s3.localhost:8088)
+  PASS  GET of the presigned URL from the host: 200
+  PASS  downloaded bytes are identical (sha256 fff9073ed1a34505...)
+  PASS  a modified signature is refused (403)
+  PASS  the object address without a signature is refused (403)
+  PASS  PUT on the public door is refused by the load balancer (403)
+  PASS  a URL signed for s3:8333 is refused on http://s3.localhost:8088 (403)
+  PASS  upload without the 'file' field: 422
+  PASS  a 6,000,000-byte file: 413 from the API (over its 5 MB limit)
+  PASS  hostile file name cleaned: originals/c260a1efa4cb42f6bfeb26bed34a0b63-pass_wd.txt
+06_storage: all checks passed
+```
+The run took about 8 seconds (`time`: `real 0m8.395s`). Afterwards the bucket holds none of the test's objects (`aws s3 ls` through `s3-init`, see Clean up).
+
+**Make it fail on purpose** (a test that cannot fail proves nothing). Make the API sign for the internal name again, then run the test:
+```bash
+S3_PUBLIC_ENDPOINT_URL=http://s3:8333 docker compose up -d --wait api
+sleep 8                                  # let Nginx pick up the new API addresses (see Troubleshooting)
+bash tests/06_storage.sh
+```
+```text
+  PASS  POST /upload: 201, key originals/75a5c4e2f93c4166aa717a14399045c6-blob.bin
+  FAIL  the URL host is 'http://s3:8333': set S3_PUBLIC_ENDPOINT_URL (with the port of LB_HOST_PORT)
+  FAIL  GET of the presigned URL: expected 200, got 000
+  FAIL  checksum differs: d127ec44a3e2b7d1 vs 
+  FAIL  modified signature: expected 403, got 000
+  FAIL  no signature: expected 403, got 000
+  FAIL  PUT: expected 403, got 000
+  FAIL  URL signed for the wrong host: expected 403, got 000
+06_storage: FAILED
+```
+(Lines filtered to `FAIL` and the upload line.) Seven checks go red, and the first one says what to fix. `000` means curl could not connect at all: the host `s3` does not exist on your machine. Put it back (`docker compose up -d --wait api` without the variable, wait a few seconds) and the test is green again.
+
+**Regression check, the step's check: `make test`:**
+```bash
+make test
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+== tests/05_cache.sh
+05_cache: all checks passed
+== tests/06_storage.sh
+06_storage: all checks passed
+```
+(Lines filtered to the headings and the summaries; `make` exited with code 0. `make test` runs every `tests/*.sh`, so the new file was picked up without touching the Makefile.)
+
+**What just happened:**
+- The lab now has a **repeatable proof** that storage works end to end **from the outside**: not "the API says it stored the file" but "a client with only a URL got the same bytes back".
+- The test checks the **refusals** as much as the success: a storage feature that also serves the wrong requests is a security bug.
+- The test cleans up after itself, so you can run it as often as you like.
+- It would not catch everything: it does not wait for a link to **expire** (300 s; see the exercises), and it does not check the `Content-Type` the object is served with (see "What this lab does not simulate").
+
+## 5. Verify it works
+With the lab up (`make up`; if port 80 is busy, set `LB_HOST_PORT` **and** `S3_PUBLIC_ENDPOINT_URL` in `.env`, for example `8088` and `http://s3.localhost:8088`):
+```bash
+make test
+```
+All six scripts must print `all checks passed`, and `make` must exit with code 0. To look by hand as well (replace `8088` by your port):
+```bash
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'                          # api x3, lb, postgres, redis, s3: healthy; s3-init and migrate: exited
+curl -s -F "file=@some.png" localhost:8088/upload                                     # key + a url on s3.localhost
+curl -s -o out.png "<the url>" && cmp some.png out.png && echo identical              # the host downloads it with the URL alone
+docker compose run --rm --no-deps -T --entrypoint sh s3-init -c 'aws --endpoint-url http://s3:8333 s3 ls "s3://$S3_BUCKET/" --recursive'   # the object is in the bucket
+docker compose port s3 8333                                                           # prints :0, the store has no published port
+```
+(In PowerShell, write `curl.exe`.)
+
+## 6. Troubleshooting
 | Symptom | Cause | Fix |
 |---|---|---|
 | `no such manifest: quay.io/minio/minio:latest` (also `...:RELEASE.2025-09-07T16-13-09Z`), and `denied: requested access to the resource is denied` for `minio/minio` on Docker Hub | MinIO stopped publishing community container images and archived the project. | Use another S3-compatible server. This lab uses SeaweedFS (decision D5 in `PLAN.md`). |
@@ -710,3 +926,53 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `ports are not available: ... 127.0.0.1:8080 ... bind: An attempt was made to access a socket in a way forbidden by its access permissions` | On Windows a port can be reserved or used by another program; the cause of the refusal of 8080 here was not investigated. | Choose another free port (8088 worked). `netsh int ipv4 show excludedportrange protocol=tcp` lists the ranges Windows reserves. |
 | `SignatureDoesNotMatch` when fetching a presigned URL through `s3.localhost` | The link was signed for another host (for example `s3:8333`), or the port is missing from `S3_PUBLIC_ENDPOINT_URL`: the signature covers the `Host` header. | Make `S3_PUBLIC_ENDPOINT_URL` equal to what the client types, port included, and keep `proxy_set_header Host $http_host;`. |
 | `error during connect: ... open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified` | Docker Desktop is not running, so the Docker engine is not reachable. | Start Docker Desktop and wait until `docker version` shows a Server section. |
+| `502 Bad Gateway` (HTML page) right after `docker compose up -d` re-created the `api` containers, a few seconds later it works | Most likely Nginx still held the old addresses of the replaced containers: it asks Docker DNS again only every 5 seconds (`valid=5s`). Not investigated further. | Wait 5 to 10 seconds. A script should retry a few times (this is why the "fail on purpose" check above has a `sleep 8`). |
+
+## 7. Going to real AWS
+- **What changes:** a real **S3 bucket** (name unique across AWS, in one region), reached through the SDK's default endpoint, so `S3_ENDPOINT_URL` and the `path` addressing option disappear. **IAM**: the API gets an **IAM role** (on ECS, a task role) with a policy limited to that bucket (`s3:PutObject`, `s3:GetObject` on `arn:aws:s3:::my-bucket/originals/*`), instead of access keys in `.env`. **Block Public Access** stays on: the bucket is private and downloads go through presigned URLs, as here.
+- **Presigned URLs:** the code is the same boto3 call. Two differences: the URL host is the real S3 address (no `s3.localhost`, no second client, no `Host` trick), and a URL signed with **temporary role credentials** stops working when those credentials expire, even if `ExpiresIn` is longer.
+- **Browsers:** to let a web page upload or fetch directly, the bucket needs a **CORS** configuration. Serving files to many users usually puts **CloudFront** in front of the bucket (Lab 08).
+- **Good habits you get for free there:** default **encryption at rest** (SSE-S3), optional **versioning**, **lifecycle rules** (move old objects to cheaper storage or delete them), **access logs**, and **event notifications** (an upload can trigger a queue message or a Lambda: the idea of Lab 07's thumbnail job).
+- **What this lab does not simulate:** durability across zones, IAM and bucket policies, versioning, encryption, lifecycle rules, event notifications, CORS, storage classes and the real S3 behaviour under load. SeaweedFS speaks the same API for the basic calls used here, but it is not S3. Also not handled yet: the **`Content-Type`** is stored as the client sent it, so a file declared `text/html` would be served as a web page; forcing a download (`ResponseContentDisposition=attachment` when signing) or an allow-list of types is the next hardening.
+- **Rough cost:** S3 bills for **storage** (a few US cents per GB per month for the standard class, region-dependent), for **requests** (per thousand `PUT`/`GET`) and for **data transferred out** to the internet (some free allowance, then a price per GB; check the page). A lab-sized bucket costs cents. See the [S3 pricing page](https://aws.amazon.com/s3/pricing/); prices change.
+
+## 8. Clean up
+```bash
+# delete the objects (the tests already delete their own)
+docker compose run --rm --no-deps -T --entrypoint sh s3-init -c 'aws --endpoint-url http://s3:8333 s3 rm "s3://$S3_BUCKET/" --recursive'
+make down          # removes the containers and networks; the files stay in the s3data volume
+make up            # starts again: the bucket and any files are still there, s3-init finds the bucket and does nothing
+make clean         # deletes ALL volumes (Postgres and s3data); it asks you to type "yes" first - run it yourself
+```
+The files live in the named volume `s3data` (step 18), so they survive `make down`; only `make clean` removes them.
+
+## 9. Check your understanding
+1. Why is a file better stored in object storage than in a database table? Name two differences between a bucket and a disk.
+2. What does a presigned URL contain, and why can the API hand it to a browser without giving away its secret key?
+3. The API creates two boto3 clients, `s3` and `s3_public`. What does each do, and what happens if the links are signed with `s3` instead?
+4. Why must the `s3.localhost` block of Nginx use `proxy_set_header Host $http_host;` rather than the default?
+5. The test checks that a `PUT` on the public door is refused and that a link signed for `s3:8333` is refused. Why test things that must **not** work?
+
+<details><summary>Answers</summary>
+
+1. Files are large, written once and read many times; a database is built for small structured rows, and big values slow it, bloat its backups and cost more per GB. A bucket has **no folders** (keys are just names with slashes), it is reached by **HTTP** with an access key, and it scales without you managing space; a disk has a real directory tree, is attached to one machine and has a fixed size.
+2. The object's address plus query parameters: the algorithm, who signed (the access key **id**), the date, the expiry, the signed headers and the **signature**. The signature is computed from the secret key, which never appears in the URL: the server recomputes it and compares. Changing any part (the object, the host, the expiry) breaks the match.
+3. `s3` talks to the store inside Docker (`http://s3:8333`) to write the object; `s3_public` only **signs** links for the public address (`http://s3.localhost:8088`). If links were signed with `s3`, they would carry the host `s3:8333`, a name that only exists inside Docker: no host or browser could use them.
+4. The signature covers the `Host` header. The default would send `Host: s3:8333` (Nginx's own destination) instead of the `s3.localhost:8088` the client signed for, so the store would answer `SignatureDoesNotMatch`. `$host` also fails when a port is used, because it drops the port; `$http_host` keeps it.
+5. A feature is not finished when it works for the right request; it must also **refuse the wrong ones**. These two checks protect the design: the public door stays read-only, and the API keeps signing for the host the client will really use. If either rule is broken by a later change, the test goes red.
+
+</details>
+
+## 10. Exercises (optional)
+- Make a link expire: add `PRESIGN_SECONDS=5` to `.env`, run `docker compose up -d`, upload, download at once (200), wait 6 seconds, download again. What status and error code does the store answer? Put the setting back.
+- Make the test catch a bug: in `lb/nginx.conf` change `proxy_set_header Host $http_host;` to `proxy_set_header Host $host;` while using `S3_PUBLIC_ENDPOINT_URL=http://s3.localhost:8088`, restart `lb`, run `tests/06_storage.sh`. Which checks fail? Put the line back.
+- Force a download: add `"ResponseContentDisposition": "attachment"` to the `Params` of `generate_presigned_url` in `api/main.py`, rebuild, and look at the response headers of the link with `curl -sI`. What is new? Extend the test to check it.
+- Upload from the browser side: write a tiny HTML page that `fetch`es a presigned **PUT** URL (generate it with `generate_presigned_url("put_object", ...)`). What does the public door answer, and why? What would you change in `nginx.conf` to allow it, and what do you lose?
+- Use the AWS CLI like a user: `aws --endpoint-url http://s3:8333 s3 cp` a file into the bucket from the `s3-init` service, then fetch it with a presigned URL made by `aws s3 presign`.
+
+## 11. Further reading
+- [Amazon S3: what it is](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) and [sharing objects with presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html) (AWS)
+- [Blocking public access to S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html) (AWS)
+- [boto3: `generate_presigned_url`](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/generate_presigned_url.html) (Python SDK)
+- [SeaweedFS: Amazon S3 API](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API) (the local server)
+- [Nginx: `proxy_set_header`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header) and [`limit_except`](https://nginx.org/en/docs/http/ngx_core_module.html#limit_except) (Nginx)
