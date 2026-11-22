@@ -28,11 +28,11 @@ Terms are explained in the [glossary](../glossary.md).
 |---|---|---|---|
 | [00](./00-setup.md) | Setup: tools, Docker basics, how the course is organised | — | ✅ done |
 | [01](./01-containers.md) | Containers and the first API | EC2 / ECS, ECR | ✅ done |
-| 02 | Load balancing and health checks | ALB, target groups | ⬜ planned |
-| 03 | Networking: public and private networks | VPC, subnets, security groups | ⬜ planned |
-| 04 | Database, migrations, persistence | RDS | ⬜ planned |
-| 05 | Caching (cache-aside) | ElastiCache | ⬜ planned |
-| 06 | Object storage and presigned URLs | S3 | ⬜ planned |
+| [02](./02-load-balancing.md) | Load balancing and health checks | ALB, target groups | ✅ done |
+| [03](./03-networking.md) | Networking: public and private networks | VPC, subnets, security groups | ✅ done |
+| [04](./04-database.md) | Database, migrations, persistence | RDS | ✅ done |
+| [05](./05-caching.md) | Caching (cache-aside) | ElastiCache | ✅ done |
+| [06](./06-object-storage.md) | Object storage and presigned URLs | S3 | 🚧 in progress |
 | 07 | Queues and workers | SQS, Lambda / ECS workers | ⬜ planned |
 | 08 | Static frontend and caching headers | S3 static hosting, CloudFront | ⬜ planned |
 | 09 | Monitoring and logs | CloudWatch | ⬜ planned |
@@ -59,11 +59,13 @@ exact step list is in [`PLAN.md`](../../PLAN.md).
   `> 📸 TODO(you): …` in the lab, to be added by hand.
 
 ## Progress
-Updated at the end of every lab. Last update: Lab 01 complete (step 3, Compose service).
+Updated at the end of every lab. Last update: Lab 03 done (step 9, isolation test).
 
 - [x] Course scaffolding: lab index, glossary, screenshot script
 - [x] Lab 00 — Setup: tools, repo skeleton, Makefile
 - [x] Lab 01 — Containers and the first API
+- [x] Lab 02 — Load balancing and health checks
+- [x] Lab 03 — Networking: public and private networks
 - [ ] Phase 1 — Docker Compose (labs 00–10)
 - [ ] Phase 2 — Kubernetes (labs 11–12)
 - [ ] Phase 3 — Terraform and a local AWS emulator (lab 13)

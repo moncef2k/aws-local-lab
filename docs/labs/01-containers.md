@@ -174,6 +174,11 @@ The container id and the build step numbers on your machine will differ.
 - FastAPI also generates interactive documentation at `/docs` (we saw HTTP 200 for it); we do not use it yet.
 
 ### Step 3 — Describe the API as a Compose service
+> **Changed in Lab 02, step 4.** The temporary `ports:` mapping and the `API_HOST_PORT` setting shown in
+> this step were removed when the load balancer arrived: the API is now only reachable through the load
+> balancer (`http://localhost/…`). The commands below are exactly what worked at the end of Lab 01
+> (commit `b502370`); to follow them literally, check out that commit.
+
 **Why:** `docker run` with five flags is hard to remember and to share. A Compose file writes the same
 decisions down once — which image, which settings, which port, how to tell it is healthy — so that `make up`
 reproduces them every time. It is the local equivalent of an ECS *task definition*. Later labs add the
@@ -258,7 +263,8 @@ per request).
 
 **What just happened:**
 - `make up` ran `docker compose up -d --build --remove-orphans`: Compose built the image from `./api`,
-  created a private network `aws-local-lab_default` and started the container
+  created a network `aws-local-lab_default` (an automatic one, shared by every service that does not name a network; [Lab 03](./03-networking.md)
+  replaces it with explicit `public` and `private` networks) and started the container
   `aws-local-lab-api-1` (`<project>-<service>-<number>`; the number matters in Lab 02 with replicas).
 - `ports: "127.0.0.1:8000:8000"` = *host address : host port : container port*. Without the `127.0.0.1:` prefix
   Docker would publish the port on every network interface of your machine, i.e. to your whole Wi-Fi.
@@ -276,6 +282,8 @@ per request).
 - `/whoami` shows a new hostname after each recreate: a new container, a new id.
 
 ## 5. Verify it works
+> From Lab 02, step 4 on, use `http://localhost/health` and `http://localhost/whoami` (port 80, through the load balancer) instead of port 8000.
+
 ```bash
 make up
 docker compose ps                     # api: Up ... (healthy)
@@ -286,7 +294,9 @@ make down
 ```
 
 ## 6. Troubleshooting
-No errors were met in steps 2 and 3. Every real error from this lab is added here as it happens.
+No errors were met while building steps 2 and 3. One thing to know: the `curl` commands in this lab are written for Bash. In
+Windows PowerShell, `curl` is an alias of `Invoke-WebRequest` and rejects options such as `-s` or `-i`; type `curl.exe`
+instead (see the Troubleshooting table in [Lab 00](./00-setup.md#6-troubleshooting)).
 
 ## 7. Going to real AWS
 - **What changes:** build the image in CI and push it to **ECR**; describe the service as an **ECS task
@@ -327,7 +337,8 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 </details>
 
 ## 10. Exercises (optional)
-- Run `API_HOST_PORT=8002 make up` and check that the API answers on port 8002 and not on 8000.
+- Run `API_LOG_LEVEL=warning make up`, send a request, and check with `docker compose logs api` that the per-request
+  INFO lines are gone. Then run `make up` again without the variable and see them come back.
 - Add a `GET /version` route to `api/main.py` that returns the string `0.1.0`, rebuild with `make up`, and
   notice from the build output which Dockerfile layers were cached.
 
@@ -338,3 +349,15 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 - [Amazon ECS task definitions](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html)
   and [Amazon ECR](https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html)
 - [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn settings](https://www.uvicorn.org/settings/)
+
+## Go deeper
+- Course: [Docker 01 - Images, containers and their lifecycle](../courses/docker/01-images-and-containers.md)
+- Course: [Docker 03 - Dockerfile instructions](../courses/docker/03-dockerfile.md)
+- Course: [Docker 04 - Layers and the build cache](../courses/docker/04-layers-and-build-cache.md)
+- Course: [Docker 05 - Tags, digests and registries](../courses/docker/05-tags-and-registries.md)
+- Course: [Docker 06 - Environment variables, config and secrets](../courses/docker/06-config-and-secrets.md)
+- Course: [Docker 07 - Docker networks and service-name DNS](../courses/docker/07-networks.md)
+- Course: [Docker 09 - Docker Compose](../courses/docker/09-compose.md)
+- Course: [Docker 10 - Debugging: logs, exec, inspect](../courses/docker/10-debugging.md)
+- Course: [Networking 01 - IP addresses, ports, localhost and TCP](../courses/networking/01-ip-ports-tcp.md)
+- Course: [Networking 03 - HTTP requests, responses and status codes](../courses/networking/03-http.md)

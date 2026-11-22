@@ -32,7 +32,7 @@ Each AWS service has an open-source stand-in that speaks the same protocol, runn
 | App servers | ECS / EKS | Docker Compose, then k3d |
 | Database | RDS | PostgreSQL container |
 | Cache | ElastiCache | Redis container |
-| Object storage | S3 | MinIO |
+| Object storage | S3 | SeaweedFS (S3-compatible; MinIO no longer ships images) |
 | Monitoring | CloudWatch | Prometheus, Grafana, Loki |
 | Infrastructure as Code | CloudFormation | Terraform + a local AWS emulator |
 
@@ -48,7 +48,7 @@ flowchart LR
   subgraph private[private network]
     api[API x3] --> db[(Postgres)]
     api --> cache[(Redis)]
-    api --> s3[(MinIO)]
+    api --> s3[(SeaweedFS)]
     worker[Worker] --> cache
     worker --> s3
   end
@@ -395,6 +395,9 @@ make up            # "no services defined yet …", exit code 0
 make down          # exit code 0
 make test          # fails with "not implemented yet" (expected until Lab 02)
 ```
+
+> **Changed in Lab 02, step 7.** `make test` is now real: it runs the scripts in `tests/`. The "not implemented yet"
+> output on this page is what it printed at the end of Lab 00.
 From both PowerShell and Git Bash. `git status` should show only the files of this lab.
 
 ## 6. Troubleshooting
@@ -403,6 +406,7 @@ From both PowerShell and Git Bash. `git status` should show only the files of th
 | `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine … The system cannot find the file specified` | Docker Desktop is not running. `docker --version` works without it, which is misleading. | Start Docker Desktop, wait for "Engine running", check with `docker info`. |
 | `no service selected` from `docker compose up` | `docker-compose.yml` has `services: {}`: nothing to start. | Handled in the Makefile (`up` checks `docker compose config --services` first). Disappears once Lab 01 adds the `api` service. |
 | `make test` / `make load-test` print "not implemented yet" and fail | Intended: they are stubs until Lab 02 (step 7) and Lab 10 (step 37). | Nothing to fix. |
+| `Invoke-WebRequest : Missing an argument for parameter 'SessionVariable'` (or another odd error) when running a `curl …` command from the labs in PowerShell | In Windows PowerShell, `curl` is an alias of `Invoke-WebRequest`, not the real curl. The labs' commands are written for Bash. | Use Git Bash for the labs' commands, or type `curl.exe` instead of `curl` in PowerShell (and `NUL` instead of `/dev/null`). `make` works the same in both shells. |
 | `ModuleNotFoundError: No module named 'playwright'` | The `mcr.microsoft.com/playwright/python` image contains the browsers but not the Python package. | Install the package pinned to the same version inside the container (already done in the script). |
 | `net::ERR_CONNECTION_REFUSED at http://demo.localhost:8099/` | Chromium resolves `*.localhost` to the container's own loopback and ignores `--add-host`. | Also pass `--host-resolver-rules="MAP <name> <ip>"` (already done in the script). |
 
@@ -456,3 +460,6 @@ To remove the small test image pulled in step 1: `docker rmi hello-world:linux`.
 - [GNU Make manual](https://www.gnu.org/software/make/manual/make.html)
 - [What is AWS?](https://aws.amazon.com/what-is-aws/) and
   [Amazon VPC: how it works](https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html)
+
+## Go deeper
+- Course: [Docker 02 - Docker Desktop on Windows (WSL2)](../courses/docker/02-docker-desktop-wsl2.md)

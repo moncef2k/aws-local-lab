@@ -47,6 +47,11 @@ Nothing will be installed system-wide without asking you first.
 - **D4 – Reaching Grafana / MinIO console / Prometheus:** host-based routing through the load balancer
   (`grafana.localhost`, `s3.localhost`, `console.localhost`) instead of extra published ports. Presigned URLs
   also need `s3.localhost` to be valid from your browser.
+- **D5 – S3 server (decided by you on 2026-11-19, step 18):** **SeaweedFS** (`chrislusf/seaweedfs`) instead of MinIO,
+  because MinIO no longer publishes container images (`quay.io/minio/minio` has no manifest, Docker Hub answers
+  `denied`). Same S3 protocol, so boto3 and presigned URLs work the same. The bucket bootstrap job uses the
+  **AWS CLI** image (`amazon/aws-cli`) with `--endpoint-url` instead of `mc`. MinIO's S3 web console has no
+  counterpart in this setup, so the D4 `console.localhost` route is dropped for S3. Where this file says MinIO below, read SeaweedFS.
 
 ## Known constraints from the hooks
 - `docker compose down -v` and `docker volume rm/prune` are blocked, so **`make clean` is something you run
@@ -79,53 +84,53 @@ Nothing will be installed system-wide without asking you first.
   `127.0.0.1` port mapping). *Check:* `docker compose ps` healthy, curl `/whoami`. Push `dev` + PR link.
 
 ### Lab 02 — Load balancing (ALB) · epic `AWSLAB-6`
-- [ ] **4. Nginx load balancer.** `AWSLAB-22` `lb/nginx.conf` + `lb` service on port 80; API port mapping removed.
+- [x] **4. Nginx load balancer.** `AWSLAB-22` `lb/nginx.conf` + `lb` service on port 80; API port mapping removed.
   Pin an Nginx version whose `upstream` supports `server <name> resolve` (open-source Nginx ≥ 1.27.3 — I'll
   confirm in the release notes before pinning), with `resolver 127.0.0.11 valid=5s;` and an upstream `zone`.
   *Check:* `nginx -t`; `curl localhost/health` works, `localhost:<api port>` no longer does.
-- [ ] **5. Three API replicas.** `AWSLAB-23` `deploy.replicas: 3`; the upstream `resolve` re-reads Docker DNS so all 3 IPs
+- [x] **5. Three API replicas.** `AWSLAB-23` `deploy.replicas: 3`; the upstream `resolve` re-reads Docker DNS so all 3 IPs
   are used. *Check:* 30 curls to `/whoami` show 3 distinct hostnames.
-- [ ] **6. Health checks & failover.** `AWSLAB-24` Container `healthcheck`, Nginx `max_fails` / `fail_timeout` /
+- [x] **6. Health checks & failover.** `AWSLAB-24` Container `healthcheck`, Nginx `max_fails` / `fail_timeout` /
   `proxy_next_upstream`. Lab 02 explains why `resolve` + `valid=5s` matters: a restarted replica gets a new IP
   and rejoins within ~5 s without reloading Nginx (plain `proxy_pass` would keep the stale IP forever).
   *Check:* `docker kill` one replica while curling in a loop → 0 failed requests; restart → it rejoins.
-- [ ] **7. Tests for Lab 02.** `AWSLAB-25` 🔀 `tests/02_load_balancing.sh` and `tests/02_failover.sh` (includes the rejoin
+- [x] **7. Tests for Lab 02.** `AWSLAB-25` 🔀 `tests/02_load_balancing.sh` and `tests/02_failover.sh` (includes the rejoin
   after restart); wire `make test`. *Check:* `make test` green. Push `dev` + PR link.
 
 ### Lab 03 — Networking (VPC, subnets, security groups) · epic `AWSLAB-7`
-- [ ] **8. Public / private networks.** `AWSLAB-26` `public` network (LB only, publishes 80) and `private`
+- [x] **8. Public / private networks.** `AWSLAB-26` `public` network (LB only, publishes 80) and `private`
   (`internal: true`, apps only); LB attached to both. *Check:* `docker network inspect`, app still reachable via LB,
   containers on `private` cannot reach the internet (like a private subnet without NAT).
-- [ ] **9. Isolation test.** `AWSLAB-27` 🔀 `tests/03_network_isolation.sh`: API containers not reachable from the host;
+- [x] **9. Isolation test.** `AWSLAB-27` 🔀 `tests/03_network_isolation.sh`: API containers not reachable from the host;
   only port 80 published. *Check:* `make test` green.
 
 ### Lab 04 — Database (RDS) · epic `AWSLAB-8`
-- [ ] **10. Postgres container.** `AWSLAB-28` `postgres:<pinned>` on `private`, named volume, password from `.env`,
+- [x] **10. Postgres container.** `AWSLAB-28` `postgres:<pinned>` on `private`, named volume, password from `.env`,
   healthcheck, no host port. *Check:* `pg_isready` via `docker compose exec`.
-- [ ] **11. DB layer + migrations.** `AWSLAB-29` SQLAlchemy + Alembic, first migration (`notes` table), one-shot `migrate`
+- [x] **11. DB layer + migrations.** `AWSLAB-29` SQLAlchemy + Alembic, first migration (`notes` table), one-shot `migrate`
   service the API waits for. *Check:* table exists (`\dt`), `alembic_version` set.
-- [ ] **12. Notes CRUD.** `AWSLAB-30` `POST/GET/PUT/DELETE /notes`. *Check:* curl the full create→read→update→delete cycle through the LB.
-- [ ] **13. Admin profile.** `AWSLAB-31` `--profile admin` publishes Postgres on `127.0.0.1:5432` (via a small proxy), off by default.
+- [x] **12. Notes CRUD.** `AWSLAB-30` `POST/GET/PUT/DELETE /notes`. *Check:* curl the full create→read→update→delete cycle through the LB.
+- [x] **13. Admin profile.** `AWSLAB-31` `--profile admin` publishes Postgres on `127.0.0.1:5432` (via a small proxy), off by default.
   *Check:* without the profile `5432` is closed; with it `psql` connects.
-- [ ] **14. DB tests.** `AWSLAB-32` 🔀 `tests/04_persistence.sh` (`down && up` keeps data) and Postgres-not-reachable check
+- [x] **14. DB tests.** `AWSLAB-32` 🔀 `tests/04_persistence.sh` (`down && up` keeps data) and Postgres-not-reachable check
   added to the isolation test. *Check:* `make test` green.
 
 ### Lab 05 — Caching (ElastiCache) · epic `AWSLAB-9`
-- [ ] **15. Redis container.** `AWSLAB-33` Pinned image, `private`, password, `maxmemory` + `allkeys-lru`. *Check:* `redis-cli ping` from inside.
-- [ ] **16. Cache-aside on `GET /notes/{id}`.** `AWSLAB-34` TTL, invalidation on PUT/DELETE, `X-Cache: HIT|MISS` header + log line.
+- [x] **15. Redis container.** `AWSLAB-33` Pinned image, `private`, password, `maxmemory` + `allkeys-lru`. *Check:* `redis-cli ping` from inside.
+- [x] **16. Cache-aside on `GET /notes/{id}`.** `AWSLAB-34` TTL, invalidation on PUT/DELETE, `X-Cache: HIT|MISS` header + log line.
   *Check:* first read MISS, second HIT, after update MISS again.
-- [ ] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.
+- [x] **17. Cache test.** `AWSLAB-35` 🔀 `tests/05_cache.sh`. *Check:* `make test` green.
 
 ### Lab 06 — Object storage (S3) · epic `AWSLAB-10`
-- [ ] **18. MinIO + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `mc` job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `mc`.
-- [ ] **19. `POST /upload` + presigned URL.** `AWSLAB-37` boto3 against MinIO, endpoint and bucket from env vars. *Check:* upload returns key + URL.
-- [ ] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → MinIO so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
+- [x] **18. S3 server (SeaweedFS, see D5) + bucket bootstrap.** `AWSLAB-36` `private` network, volume, one-shot `aws` CLI job creating the bucket, fake creds in `.env`. *Check:* bucket listed via `aws s3 ls`.
+- [x] **19. `POST /upload` + presigned URL.** `AWSLAB-37` boto3 against the S3 server (SeaweedFS), endpoint and bucket from env vars. *Check:* upload returns key + URL.
+- [x] **20. Public S3 endpoint via the LB.** `AWSLAB-38` `s3.localhost` route → the S3 server so presigned URLs work from the host (signed with the public endpoint). *Check:* `curl` the presigned URL from the host, bytes match.
 - [ ] **21. Storage test.** `AWSLAB-39` 🔀 `tests/06_storage.sh` upload → download → compare checksum. *Check:* `make test` green.
 
 ### Lab 07 — Queues & workers (SQS) · epic `AWSLAB-11`
 - [ ] **22. `POST /jobs` + `GET /jobs/{id}`.** `AWSLAB-40` Enqueue to a Redis list (reliable `BLMOVE` pattern), job status in a Redis hash. *Check:* job id returned, status `queued`.
 - [ ] **23. Worker container.** `AWSLAB-41` `worker/` consumes jobs, config from env, no local state, graceful shutdown. *Check:* logs show job picked up, status → `done` (stub work).
-- [ ] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from MinIO (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
+- [ ] **24. Thumbnail job.** `AWSLAB-42` Worker reads the uploaded image from the S3 server (Pillow), writes the thumbnail back. *Check:* thumbnail object exists in the bucket.
 - [ ] **25. Async test.** `AWSLAB-43` 🔀 `tests/07_async.sh` submit job → poll until done → thumbnail downloadable. *Check:* `make test` green.
 
 ### Lab 08 — Frontend & CDN (S3 static hosting + CloudFront) · epic `AWSLAB-12`
@@ -146,7 +151,7 @@ Nothing will be installed system-wide without asking you first.
 - [ ] **36. Test runner polish.** `AWSLAB-54` `make test` prints a summary table and exits non-zero on any failure; add `tests/README` of what each test proves. *Check:* break something on purpose → red; revert → green.
 - [ ] **37. k6 load test.** `AWSLAB-55` `tests/load/k6.js` (50 VUs, 1 min, thresholds on p95 and error rate) run via pinned `grafana/k6` image, `make load-test`. *Check:* summary printed with p95 and error rate.
 - [ ] **38. k6 → Grafana.** `AWSLAB-56` Send k6 metrics to Prometheus (remote write) and add a panel. *Check:* panel shows the run (screenshot).
-- [ ] **39. Root `README.md`.** `AWSLAB-57` 🔀 Mermaid architecture diagram, local-vs-AWS mapping table, "what this can't simulate". **End of Phase 1** — full `make down && make up && make test` run.
+- [ ] **39. Root `README.md`.** `AWSLAB-57` 🔀 **Update the existing root `README.md`** (created outside the plan, ticket `AWSLAB-78`) — do not write a new one: bring its status line, architecture diagram (mark what is now built), local-vs-AWS table, lab table and roadmap up to date, and add "what this can't simulate" if missing. **End of Phase 1** — full `make down && make up && make test` run.
 
 ---
 
@@ -158,7 +163,7 @@ Full size is possible: **1 server + 2 agents** (31 GB RAM).
 - [ ] **41. Images into the cluster.** `AWSLAB-59` Build/tag apps with explicit versions, `k3d image import`. *Check:* images listed on nodes.
 - [ ] **42. Namespace, ConfigMap, Secret.** `AWSLAB-60` Secret generated from `.env` by a script, never committed. *Check:* `kubectl get cm,secret -n lab`.
 - [ ] **43. Postgres in-cluster.** `AWSLAB-61` StatefulSet + PVC + headless Service. *Check:* pod Ready, `pg_isready`.
-- [ ] **44. Redis + MinIO in-cluster.** `AWSLAB-62` *Check:* pods Ready, bucket bootstrap Job completes.
+- [ ] **44. Redis + S3 server in-cluster.** `AWSLAB-62` *Check:* pods Ready, bucket bootstrap Job completes.
 - [ ] **45. API Deployment.** `AWSLAB-63` 3 replicas, Service, liveness + readiness probes, migration Job. *Check:* `kubectl rollout status`; port-forward `/whoami`.
 - [ ] **46. Worker Deployment.** `AWSLAB-64` *Check:* a posted job reaches `done`.
 - [ ] **47. Frontend + Ingress.** `AWSLAB-65` Frontend Deployment, Traefik Ingress (bundled with k3s). *Check:* `curl localhost:8080/whoami` shows several pod names.

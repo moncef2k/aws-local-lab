@@ -9,7 +9,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY main.py db.py alembic.ini ./
+COPY migrations ./migrations
 
 # Never run as root inside the container.
 RUN useradd --system --uid 10001 --no-create-home app
