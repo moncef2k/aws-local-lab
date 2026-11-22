@@ -117,7 +117,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 01 | What a web server and a reverse proxy are | `01-web-server-and-reverse-proxy.md` | step 4 (Lab 02) | step 22 | AWSLAB-109 | `lb/nginx.conf` in front of the API |
 | 02 | Config structure, `server` and `location` matching | `02-config-server-location.md` | step 4 (Lab 02) | step 23 | AWSLAB-111 | `events`, `http`, `server`, `upstream` blocks; routing `/health`, `/whoami`; host-based routing later (D4) |
 | 03 | `proxy_pass` and proxy headers | `03-proxy-pass-and-headers.md` | step 4 (Lab 02) | step 24 | AWSLAB-113 | `proxy_pass http://api`, `Host`, `X-Forwarded-*` |
-| 04 | Upstreams and load-balancing methods | `04-upstream-and-load-balancing.md` | step 5 (Lab 02) | step 25 | - | `upstream`, `zone`, `server ... resolve`, 3 replicas |
+| 04 | Upstreams and load-balancing methods | `04-upstream-and-load-balancing.md` | step 5 (Lab 02) | step 25 | AWSLAB-115 | `upstream`, `zone`, `server ... resolve`, 3 replicas |
 | 05 | Timeouts, retries and passive health checks | `05-timeouts-retries-failover.md` | step 6 (Lab 02) | step 26 | - | `max_fails`, `fail_timeout`, `proxy_next_upstream` |
 | 06 | Static files and caching headers | `06-static-files-and-caching-headers.md` | step 26 (Lab 08) | step 39 | - | Frontend Nginx; `Cache-Control`, `ETag` (27) |
 | 07 | HTTPS in Nginx | `07-https.md` | step 28 (Lab 08) | step 40 | - | `listen 443 ssl`, certificate, 80 to 443 redirect |
@@ -354,7 +354,8 @@ back and the plan updated.
 18. [x] Step 22 modules written (Databases 07 and Nginx 01).
 19. [x] Step 23 modules written (Databases 08 and Nginx 02).
 20. [x] Step 24 modules written (Databases 09 and Nginx 03). The Databases course is now complete (9 of 9).
-21. [ ] Next modules: see "Schedule by lab step" (step 25: AWS 07 and Nginx 04).
+21. [x] Step 25 modules written (AWS 07 and Nginx 04).
+22. [ ] Next modules: see "Schedule by lab step" (step 26: Caching 01 and Nginx 05).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
