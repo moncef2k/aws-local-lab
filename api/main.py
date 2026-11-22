@@ -1,8 +1,9 @@
+import json
 import logging
 import os
 import re
 import socket
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Iterator
 from uuid import uuid4
 
@@ -10,7 +11,7 @@ import boto3
 import redis
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Path, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,6 +58,13 @@ def make_s3_client(endpoint_url: str):
 # to be created for the address the client will really call. Signing is local maths: no network call.
 s3 = make_s3_client(os.environ["S3_ENDPOINT_URL"])
 s3_public = make_s3_client(os.environ.get("S3_PUBLIC_ENDPOINT_URL", os.environ["S3_ENDPOINT_URL"]))
+# The job queue (SQS in AWS). Same Redis server as the cache, but here Redis is a hard dependency:
+# a job that could not be queued must never be reported as accepted (the routes answer 503).
+queue = redis.Redis.from_url(
+    os.environ["REDIS_URL"], decode_responses=True, socket_connect_timeout=1, socket_timeout=2
+)
+QUEUE_KEY = "queue:jobs"  # a Redis list: the ids of the jobs waiting for a worker
+JOB_TTL = int(os.environ.get("JOB_TTL_SECONDS", "86400"))  # how long a job record is kept (24 h)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 PRESIGN_SECONDS = int(os.environ.get("PRESIGN_SECONDS", "300"))
 
@@ -92,6 +100,35 @@ class UploadOut(BaseModel):
     content_type: str
     url: str  # a presigned GET link: valid for expires_in seconds, no credentials needed
     expires_in: int
+
+
+class JobIn(BaseModel):
+    """What a client sends to ask for a job."""
+
+    type: str = Field(min_length=1, max_length=50)  # what to do, e.g. "thumbnail" (step 24)
+    payload: dict[str, str] = Field(default_factory=dict, max_length=10)  # its inputs
+
+
+class JobOut(BaseModel):
+    id: str
+    type: str
+    status: str  # "queued" now; a worker will move it on (step 23)
+    created_at: datetime
+    payload: dict[str, str]
+
+
+def job_key(job_id: str) -> str:
+    return f"job:{job_id}"  # the Redis hash that holds one job's record
+
+
+def job_out(job_id: str, record: dict[str, str]) -> dict:
+    return {
+        "id": job_id,
+        "type": record["type"],
+        "status": record["status"],
+        "created_at": record["created_at"],
+        "payload": json.loads(record["payload"]),
+    }
 
 
 def get_note_or_404(db: Session, note_id: int) -> Note:
@@ -196,3 +233,39 @@ def upload(file: Annotated[UploadFile, File()]):
         raise HTTPException(status_code=502, detail="object storage unavailable")
     log.info("uploaded %s (%s bytes)", key, len(data))
     return UploadOut(key=key, size=len(data), content_type=content_type, url=url, expires_in=PRESIGN_SECONDS)
+
+
+@app.post("/jobs", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED)
+def create_job(data: JobIn):
+    """Queue a job and answer at once. 202 means "accepted", not "done": a worker does the work later."""
+    job_id = uuid4().hex
+    record = {
+        "type": data.type,
+        "status": "queued",
+        "payload": json.dumps(data.payload),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        pipe = queue.pipeline(transaction=True)  # MULTI/EXEC: the three commands run together or not at all
+        pipe.hset(job_key(job_id), mapping=record)  # the record first ...
+        pipe.expire(job_key(job_id), JOB_TTL)  # ... that disappears by itself after a day ...
+        pipe.lpush(QUEUE_KEY, job_id)  # ... then the id joins the queue
+        pipe.execute()
+    except redis.RedisError as exc:
+        log.error("could not queue job %s: %s", job_id, exc)
+        raise HTTPException(status_code=503, detail="job queue unavailable")
+    log.info("queued job %s (%s)", job_id, data.type)
+    return job_out(job_id, record)
+
+
+@app.get("/jobs/{job_id}", response_model=JobOut)
+def get_job(job_id: Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]):
+    """The current state of a job: poll this until the status is "done"."""
+    try:
+        record = queue.hgetall(job_key(job_id))
+    except redis.RedisError as exc:
+        log.error("could not read job %s: %s", job_id, exc)
+        raise HTTPException(status_code=503, detail="job queue unavailable")
+    if not record:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job_out(job_id, record)
