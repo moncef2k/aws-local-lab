@@ -21,7 +21,8 @@
 | **Gateway / default route** | The "door out" of a network: the address a machine sends everything to that is not on its own network. A machine with no default route can only talk to its own network. |
 | **Bridge network** | The kind of virtual network Docker creates by default: containers on it get private addresses and a gateway. |
 | **Published port** | A Docker port mapping `-p HOST:CONTAINER`: a port of your machine forwarded to a port of a container. |
-| **Bind address** | The address a published port listens on: `127.0.0.1` means "this machine only", `0.0.0.0` means "every network interface". |
+| **Network interface** | One of the ways your machine connects to a network: the Wi-Fi card, the Ethernet port, or the internal "loopback" connection that only talks to the machine itself. Each has its own address. |
+| **Bind address** | The address a published port listens on: `127.0.0.1` (the loopback interface) means "this machine only", `0.0.0.0` means "every network interface". |
 | **Internet gateway / NAT gateway (AWS)** | The two AWS parts that connect a VPC to the internet: the internet gateway for public subnets, the NAT gateway so private subnets can go **out** without being reachable from outside. |
 
 ## The idea
@@ -160,7 +161,7 @@ docker stop web1 web2 echo05          # started with --rm: they remove themselve
 ```
 
 ## What if…?
-**…you leave out `127.0.0.1` in the mapping?** `-p 18093:80` instead of `-p 127.0.0.1:18093:80`:
+**…you leave out `127.0.0.1` in the mapping?** `docker run -d --rm --name web4 -p 18093:80 nginx:1.30.6-alpine` instead of `-p 127.0.0.1:18093:80`; then `docker port web4`:
 ```text
 80/tcp -> 0.0.0.0:18093
 80/tcp -> [::]:18093
