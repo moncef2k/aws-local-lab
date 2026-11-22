@@ -1,9 +1,9 @@
 # Lab 07 — Queues and workers (SQS)
 
 > **AWS equivalent:** Amazon SQS (queues, messages, visibility timeout, dead-letter queues) + a worker on ECS or Lambda  ·  **Time:** ~90 min  ·  **Difficulty:** ★★★
-> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22), `89a7d7c` and `0e475a9` (step 23) on `dev`
+> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22), `89a7d7c` and `0e475a9` (step 23), `3a81ef1` (step 24) on `dev`
 
-> **Status:** in progress. Steps 22–23 are written. Steps 24–25 (thumbnail job, async test) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 22–24 are written. Step 25 (async test) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Tell a **synchronous** request from an **asynchronous** one, and say when a queue is the right tool.
@@ -13,6 +13,7 @@
 - Explain why the two writes of an enqueue must be **atomic** (`MULTI`/`EXEC`), and what a queue on a cache-style Redis can lose.
 - Write a **worker** with the **reliable-queue pattern** (`BLMOVE` to a processing list, acknowledge with `LREM`), and show that a killed worker loses no job.
 - Handle **`SIGTERM`** so `docker stop` finishes the current job, and explain what a restart policy does and does not do.
+- Write a real **job handler**: read an image from the bucket, make a thumbnail with Pillow, write it back, and turn every failure into a `failed` status instead of a crash.
 
 ## 2. Theory
 
@@ -67,9 +68,9 @@ flowchart LR
   api -->|"3. 202 Accepted + id"| you
   you -.->|"4. GET /jobs/id (poll)"| api
   worker["worker"] -->|"5. BLMOVE an id, work, update status, LREM"| redis
-  worker -.->|"step 24: thumbnail"| s3[("s3: SeaweedFS")]
+  worker -->|"6. step 24: read the image, write the thumbnail"| s3[("s3: SeaweedFS")]
 ```
-Solid arrows exist after step 23; dashed ones come in the next steps.
+Solid arrows exist after step 24; dashed ones are the polling.
 
 ## 3. Prerequisites
 - [Lab 06](./06-object-storage.md) completed: `make up` runs, `make test` is green (six scripts).
@@ -332,7 +333,7 @@ An id that stays in `queue:processing` is a job being worked on, or one whose wo
 
 **Do it.** Three files.
 
-1. `worker/worker.py` (the whole file):
+1. `worker/worker.py` (the whole file, **as it is at the end of this step**; [step 24](#step-24--the-thumbnail-job) replaces the stub work by real jobs and changes it):
    ```python
    """Queue worker (the consumer of Lab 07): takes job ids from a Redis list, does the work, reports the status.
 
@@ -650,6 +651,296 @@ make test
 - **A crash does not lose a job** (Check 3), and a **graceful stop does not interrupt one** (Check 4). The cost of the crash case is **at-least-once** delivery: a job can run twice, so real work must be **idempotent** (running it twice must do no harm; a thumbnail that overwrites the same key is).
 - The worker has **no local state** and takes its settings from the environment: it could run on ECS, Kubernetes or Lambda unchanged. Its identity in the logs is the container id.
 - **Limits of this version, on purpose:** (1) the recovery at start-up moves **every** id in the processing list back, which is right for one worker but would steal the jobs other running workers are busy with if you started several (they would then be done twice); SQS avoids this with a per-message visibility timeout, a per-worker processing list with a heartbeat would be the Redis answer. (2) A failing job is marked `failed` and not retried, and there is no dead-letter queue; and only errors raised **inside** the `try` of `process()` are handled: any other exception would end the process, and with `restart: unless-stopped` plus the start-up requeue that becomes a crash loop on one bad job, so the real work of step 24 must stay inside that `try`. (3) The queue still lives in the cache-style Redis of Lab 05 (restart = empty queue, see step 22): the status hash and the lists are lost together, so a restart loses jobs **consistently**, but it does lose them.
+
+### Step 24 — The thumbnail job
+**Why:** until now the worker only slept. This step gives it a **real job**, the classic one for object storage and queues: someone uploads a large image, the API answers at once, and in the background a worker makes a small **thumbnail** and stores it next to the original. In AWS the same pipeline is usually: S3 (upload) → an event message in SQS → a Lambda function or an ECS worker (resize) → S3 (thumbnail).
+
+**How a job names its input.** `POST /jobs` already takes a `type` and a `payload` (a dictionary of strings, step 22). A thumbnail job is:
+```json
+{"type": "thumbnail", "payload": {"key": "originals/<id>-big.png", "size": "128"}}
+```
+`key` is the object to shrink (the `key` that `POST /upload` returned), `size` is optional (the longest side in pixels, 128 by default, between 16 and 1024). The worker looks the `type` up in a small table of **handlers** (`thumbnail`, and the old `noop` that sleeps), so a new kind of job is one more function.
+
+**What the handler does.** It reads the original from the bucket, opens it with **Pillow** (the standard Python imaging library), shrinks it so that it fits in `size × size` **keeping its proportions**, saves it as a PNG and writes it under `thumbnails/`. The prefix `originals/` promised in [step 19](./06-object-storage.md#step-19--post-upload-and-the-presigned-url) is now used: the worker only accepts keys under `originals/`, so it cannot be asked to make thumbnails of thumbnails or to read other objects.
+
+**When it goes wrong.** The input comes from a user, so many things can fail: the object does not exist, it is not an image, the payload is invalid, the job type is unknown. Any error inside the job ends it with the status **`failed`** and a short `error` message in the job's record; the id is still acknowledged (no retry, no dead-letter queue yet) and the worker carries on with the next job. A worker that crashes on one bad job would be restarted by Docker, requeue the same job at start-up, and crash again: all the work of a job therefore lives **inside** one `try` block.
+
+**Do it.** Three files (the new `Dockerfile` line, the S3 settings of the service, and the worker).
+
+1. `worker/Dockerfile`: boto3 and Pillow join `redis`, pinned (boto3 at the version of the API):
+   ```dockerfile
+   RUN pip install --no-cache-dir redis==8.1.0 boto3==1.44.6 Pillow==13.0.0
+   ```
+
+2. The worker needs the S3 settings, like the API (`docker-compose.yml`, the `worker` service now reads):
+   ```yaml
+     # The queue consumer (an ECS service or Lambda in AWS). It takes job ids from the Redis list, does
+     # the work and updates the job's status. No port, no volume, no local state: everything is in Redis.
+     worker:
+       build: ./worker
+       image: aws-local-lab-worker:0.1.0
+       environment:
+         REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env (see .env.example)}@redis:6379/0
+         # How long a "noop" job lasts, in seconds.
+         WORK_SECONDS: ${WORK_SECONDS:-2}
+         # The object store, like the api service: the worker reads the uploads and writes the thumbnails.
+         S3_ENDPOINT_URL: http://s3:8333
+         S3_BUCKET: ${S3_BUCKET:-uploads}
+         S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env (see .env.example)}
+         S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (see .env.example)}
+       depends_on:
+         redis:
+           condition: service_healthy
+         s3-init:
+           condition: service_completed_successfully
+       networks:
+         - private
+       # Like an ECS service: if the worker dies, start another one (it puts unfinished jobs back in the queue).
+       restart: unless-stopped
+       # "docker stop" sends SIGTERM; the worker finishes its current job, then exits. Wait that long before SIGKILL.
+       stop_grace_period: 30s
+   ```
+
+3. `worker/worker.py`. New imports and the S3 client, after the existing settings (same options as the client of `api/main.py`):
+   ```python
+   import io
+   import json
+   import logging
+   import os
+   import signal
+   import socket
+   import time
+   from datetime import datetime, timezone
+
+   import boto3
+   import redis
+   from botocore.config import Config
+   from PIL import Image, ImageOps
+
+   REDIS_URL = os.environ["REDIS_URL"]
+   WORK_SECONDS = float(os.environ.get("WORK_SECONDS", "2"))  # how long a "noop" job lasts
+   QUEUE_KEY = "queue:jobs"  # same names as in api/main.py
+   PROCESSING_KEY = "queue:processing"
+   POLL_SECONDS = 2  # one blocking wait lasts this long: also the longest a stop request waits
+
+   # The object store (S3 in AWS): same settings and same client options as the API (api/main.py).
+   S3_BUCKET = os.environ["S3_BUCKET"]
+   s3 = boto3.client(
+       "s3",
+       endpoint_url=os.environ["S3_ENDPOINT_URL"],
+       aws_access_key_id=os.environ["S3_ACCESS_KEY"],
+       aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+       region_name="us-east-1",
+       config=Config(
+           signature_version="s3v4",
+           s3={"addressing_style": "path"},
+           connect_timeout=3,
+           read_timeout=10,
+           retries={"max_attempts": 2},
+       ),
+   )
+   ```
+   The handlers, and the new `process()`, in place of the old stub work:
+   ```python
+   def make_thumbnail(payload: dict) -> dict:
+       """Read the image payload["key"] from the bucket, shrink it to fit in size x size, write it back."""
+       key = payload.get("key", "")
+       if not key.startswith("originals/"):
+           raise ValueError("payload.key must be an object under originals/")
+       size = int(payload.get("size", "128"))
+       if not 16 <= size <= 1024:
+           raise ValueError("payload.size must be between 16 and 1024")
+       data = s3.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read()
+       with Image.open(io.BytesIO(data)) as img:  # raises UnidentifiedImageError if it is not an image
+           img = ImageOps.exif_transpose(img)  # apply the camera's rotation flag, if any
+           if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+               img = img.convert("RGB")  # modes PNG cannot store (CMYK, ...)
+           img.thumbnail((size, size))  # shrink in place, keeping the proportions
+           width, height = img.size
+           out = io.BytesIO()
+           img.save(out, format="PNG")
+       name = os.path.splitext(os.path.basename(key))[0]
+       out_key = f"thumbnails/{name}-{size}.png"  # the size is in the name; a redo of the same job overwrites
+       s3.put_object(Bucket=S3_BUCKET, Key=out_key, Body=out.getvalue(), ContentType="image/png")
+       return {"result_key": out_key, "result_size": f"{width}x{height}"}
+
+
+   def do_noop(payload: dict) -> dict:
+       time.sleep(WORK_SECONDS)  # pretend to work
+       return {}
+
+
+   HANDLERS = {"thumbnail": make_thumbnail, "noop": do_noop}
+
+
+   def process(r: redis.Redis, job_id: str) -> None:
+       key = f"job:{job_id}"
+       if not r.exists(key):  # the record expired while the id waited
+           log.warning("job %s has no record any more: dropped", job_id)
+           return
+       r.hset(key, mapping={"status": "processing", "started_at": now()})
+       job_type = r.hget(key, "type")
+       log.info("picked up job %s (%s)", job_id, job_type)
+       try:  # everything that can go wrong with the job itself happens inside this block
+           handler = HANDLERS.get(job_type)
+           if handler is None:
+               raise ValueError(f"unknown job type {job_type!r}")
+           result = handler(json.loads(r.hget(key, "payload") or "{}"))
+       except Exception as exc:
+           message = f"{type(exc).__name__}: {exc}"[:200]
+           r.hset(key, mapping={"status": "failed", "error": message, "finished_at": now()})
+           log.error("job %s failed: %s", job_id, message)
+           return
+       r.hset(key, mapping={"status": "done", "finished_at": now(), **result})
+       log.info("job %s done %s", job_id, result or "")
+   ```
+   (`main()` only changes in its log line: `worker started (job types: thumbnail, noop)`.)
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `S3_BUCKET`, `s3 = boto3.client(...)` | The same endpoint, bucket and keys as the API, from the environment. `path` addressing and a few timeouts, as in step 19. | Without `endpoint_url` boto3 would talk to the real AWS. |
+| `if not key.startswith("originals/")` | Only objects under `originals/` can be thumbnailed. | A key like `thumbnails/x.png` would produce thumbnails of thumbnails. |
+| `size = int(payload.get("size", "128"))` and the range test | A string payload value is turned into a number, and must be sensible. | Without the limit a client could ask for a 100,000-pixel "thumbnail". |
+| `s3.get_object(...)["Body"].read()` | Downloads the whole original (at most 5 MB: the upload limit of step 19) into memory. | |
+| `Image.open(io.BytesIO(data))` | Opens the image from memory. A file that is not an image raises `UnidentifiedImageError`. | |
+| `ImageOps.exif_transpose(img)` | Applies the "rotate me" flag that phones put in photos, so thumbnails are not sideways. | |
+| `img.convert("RGB")` when the mode is unusual | PNG cannot store some modes (CMYK from some JPEGs). | Those images would fail with `cannot write mode CMYK as PNG`. |
+| `img.thumbnail((size, size))` | Shrinks the image **in place** so that it fits in the box, keeping the proportions. It never enlarges. | |
+| `img.save(out, format="PNG")` | Encodes to PNG in memory. | |
+| `out_key = f"thumbnails/{name}-{size}.png"` | The result goes under `thumbnails/`, named after the original **and the size**. The same job run twice writes the same key: a redo **overwrites** instead of piling up copies, so redoing a job is harmless (it is **idempotent**). | Without the size in the name, two sizes of one image would overwrite each other (found while testing, see below). |
+| `s3.put_object(..., ContentType="image/png")` | Stores the thumbnail with its type. | |
+| `return {"result_key": ..., "result_size": ...}` | The handler returns what to record in the job's hash. | |
+| `HANDLERS = {"thumbnail": ..., "noop": ...}` | The table from `type` to function. An unknown type is refused. | |
+| `try: ... except Exception as exc:` in `process()` | Everything that can fail with **this** job is inside: the job becomes `failed` with `error`, and the worker survives. | Outside the `try`, one bad job would crash the worker, again and again (restart policy + start-up requeue). |
+| `**result` in the final `hset` | Adds `result_key` and `result_size` to the record next to `status` and `finished_at`. | |
+| `S3_*` in the compose file, `s3-init: service_completed_successfully` | The settings, and the worker starts only after the bucket exists. | |
+
+**A test image.** The host has no Pillow, so a throw-away container made from the **worker image** (which has it) creates two images in your current folder:
+```bash
+D=$(pwd -W)
+MSYS_NO_PATHCONV=1 docker run --rm -v "$D:/out" --entrypoint python aws-local-lab-worker:0.1.0 -c "
+from PIL import Image
+big = Image.new('RGB', (1200, 800))
+big.putdata([(x * 255 // 1200, y * 255 // 800, 128) for y in range(800) for x in range(1200)])
+big.save('/out/big.png')
+Image.new('RGB', (100, 60), (200, 40, 40)).save('/out/small.png')
+print('made big.png', big.size, 'and small.png (100, 60)')
+"
+echo "just text, not an image" > notes.txt
+```
+```text
+made big.png (1200, 800) and small.png (100, 60)
+```
+(`-v "$D:/out"` shows your folder to the container as `/out`; `--entrypoint python` replaces the worker's normal start command by a Python one-liner.)
+
+**Rebuild and start:**
+```bash
+docker compose up -d --build --wait worker
+docker compose exec -T worker python -c "import PIL, boto3, redis; print('Pillow', PIL.__version__, '| boto3', boto3.__version__, '| redis', redis.__version__)"
+```
+```text
+worker-1  | 2026-11-22 21:34:08,320 INFO worker started (job types: thumbnail, noop)
+Pillow 13.0.0 | boto3 1.44.6 | redis 8.1.0
+```
+
+**Check 1 — the step's check: the thumbnail object exists in the bucket.** Upload the big image through the API, ask for a thumbnail with the returned key, poll, then look at the worker's log, the job's record and the bucket:
+```bash
+curl -s -F "file=@big.png;type=image/png" localhost:8088/upload               # note the "key"
+curl -s -X POST localhost:8088/jobs -H 'Content-Type: application/json' -d '{"type":"thumbnail","payload":{"key":"<the key>"}}'
+curl -s localhost:8088/jobs/<the id>                                           # until "done"
+docker compose logs worker
+rcli hgetall job:<the id>
+docker compose run --rm --no-deps -T --entrypoint sh s3-init -c 'aws --endpoint-url http://s3:8333 s3 ls "s3://$S3_BUCKET/" --recursive'
+```
+```text
+key=originals/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png (4870 bytes)
+{"id":"705a6c7a460e4c25a83041355654dcef","type":"thumbnail","status":"queued","created_at":"2026-11-22T21:34:35.797283Z","payload":{"key":"originals/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png"}}
+poll 1: done
+worker-1  | 2026-11-22 21:34:35,843 INFO picked up job 705a6c7a460e4c25a83041355654dcef (thumbnail)
+worker-1  | 2026-11-22 21:34:35,885 INFO job 705a6c7a460e4c25a83041355654dcef done {'result_key': 'thumbnails/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png', 'result_size': '128x85'}
+status done
+started_at 2026-11-22T21:34:35.842813+00:00
+finished_at 2026-11-22T21:34:35.884847+00:00
+result_key thumbnails/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png
+result_size 128x85
+   4870 originals/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png
+    295 thumbnails/b0a9fa9c1bf64d9eb432bb16e1717ac2-big.png
+```
+(The `rcli` helper is the one of step 22; `hgetall` lines paired and filtered; the bucket listing is cut to the two objects of this test, and ids are shown in full where they matter. **This first run used the first version of the code, whose thumbnail key had no size in it**: the key became `…-big-128.png` after the fix described in Check 4. Nothing else differs.) The job went `queued` → `done` in **under 50 ms** (`started_at` to `finished_at`), the 1200 × 800 image became **128 × 85**, and a new object `thumbnails/…` of 295 bytes sits in the bucket next to the 4,870-byte original.
+
+**Check 2 — read the thumbnail back and open it.** A throw-away container from the worker image (it has boto3 and Pillow, and the S3 settings) downloads the object and opens it with Pillow:
+```bash
+docker compose run --rm --no-deps -T --entrypoint python worker -c "
+import io, os, boto3
+from botocore.config import Config
+from PIL import Image
+s3 = boto3.client('s3', endpoint_url=os.environ['S3_ENDPOINT_URL'], aws_access_key_id=os.environ['S3_ACCESS_KEY'], aws_secret_access_key=os.environ['S3_SECRET_KEY'], region_name='us-east-1', config=Config(s3={'addressing_style': 'path'}))
+obj = s3.get_object(Bucket=os.environ['S3_BUCKET'], Key='<the result_key of the job>')
+img = Image.open(io.BytesIO(obj['Body'].read()))
+print('format', img.format, '| size', img.size, '| mode', img.mode, '| content-type', obj['ContentType'], '| bytes', obj['ContentLength'])
+"
+```
+```text
+format PNG | size (128, 85) | mode RGB | content-type image/png | bytes 295
+```
+It is a valid **PNG** of **128 × 85** pixels (1200 × 800 shrunk by a factor 9.375, proportions kept), stored with the right content type.
+
+**Check 3 — other sizes, and everything that can go wrong.** A small shell helper submits a job, polls until it is `done` or `failed` and prints the result or the error from the record:
+```bash
+job() { local id=$(curl -s -X POST localhost:8088/jobs -H 'Content-Type: application/json' -d "$2" | sed -n 's/.*"id":"\([0-9a-f]*\)".*/\1/p'); for i in $(seq 10); do s=$(curl -s localhost:8088/jobs/$id | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p'); [ "$s" = done ] || [ "$s" = failed ] && break; sleep 1; done; printf '%-34s -> %s | %s\n' "$1" "$s" "$(rcli hmget job:$id result_size error | tr '\n' ' ')"; }
+```
+```text
+thumbnail, default size (128)      -> done | 128x85
+thumbnail, size 64                 -> done | 64x43
+image smaller than the size        -> done | 100x60
+a text file, not an image          -> failed |  UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x7bbda280be70>
+a key that does not exist          -> failed |  NoSuchKey: An error occurred (NoSuchKey) when calling the GetObject operation: The specified key does not exist.
+a key outside originals/           -> failed |  ValueError: payload.key must be an object under originals/
+size out of range (5000)           -> failed |  ValueError: payload.size must be between 16 and 1024
+unknown job type                   -> failed |  ValueError: unknown job type 'resize'
+noop still works                   -> done | 
+--- the worker is still running after the failures: Up About a minute; queues: jobs=0 processing=0
+```
+Reading it: size 64 gives **64 × 43**; the 100 × 60 image is **not enlarged** (`thumbnail()` only shrinks); and **every** failure ends as `failed` with a message that says why (an uploaded text file, a missing object, a rejected payload, an unknown type). The worker was still running afterwards, with both lists empty: a bad job costs one job, not the worker. This is the first time the `failed` path of step 23 was exercised.
+
+**Check 4 — a design flaw, found by this check.** In the run above the first two jobs concerned the same image, with sizes 128 and 64. In the **first version** the result key was `thumbnails/<name>.png` for both, so the second **overwrote** the first. After adding the size to the key (the code shown above), three jobs for one image (128, then 64, then 128 again) give:
+```text
+    295 521ea3eb34cb4ba8b59025da7868fd32-big-128.png
+    196 521ea3eb34cb4ba8b59025da7868fd32-big-64.png
+21:35:36,590 job 442c9944... done {'result_key': 'thumbnails/521ea3eb34cb4ba8b59025da7868fd32-big-128.png', 'result_size': '128x85'}
+21:35:36,619 job 1983e6ed... done {'result_key': 'thumbnails/521ea3eb34cb4ba8b59025da7868fd32-big-64.png', 'result_size': '64x43'}
+21:35:36,663 job 708564c5... done {'result_key': 'thumbnails/521ea3eb34cb4ba8b59025da7868fd32-big-128.png', 'result_size': '128x85'}
+```
+(Listing of `thumbnails/` filtered to this image; ids cut.) **Two** thumbnails exist for three jobs: the repeated 128-pixel job wrote to the same key as the first one and replaced it. Different jobs give different keys, the **same** job always the same key: that is what makes a redo (at-least-once delivery, [step 23](#step-23--the-worker-container)) harmless.
+
+**Clean up the test files** (the bucket held 22 test objects from this and earlier tests): `aws s3 rm "s3://$S3_BUCKET/" --recursive` through the `s3-init` service, as in the Clean up of Lab 06.
+
+**Regression check — the whole suite:**
+```bash
+make test
+```
+```text
+== tests/02_failover.sh
+02_failover: all checks passed
+== tests/02_load_balancing.sh
+02_load_balancing: all checks passed
+== tests/03_network_isolation.sh
+03_network_isolation: all checks passed
+== tests/04_persistence.sh
+04_persistence: all checks passed
+== tests/05_cache.sh
+05_cache: all checks passed
+== tests/06_storage.sh
+06_storage: all checks passed
+```
+(Trimmed to the headings and summary lines; `make` exited with code 0 on this run. As noted in step 23, `02_failover` is intermittent on this machine and may show its `59 of 60` failure on another run.)
+
+**What just happened:**
+- The lab now has a **complete asynchronous pipeline with a real task**: upload → queue → worker → thumbnail in the bucket, and none of the three programs waits for another.
+- The worker is **generic**: it dispatches on the job's `type`, so the next kind of job is one function and one entry in `HANDLERS`.
+- **Untrusted input means a failure path is part of the feature.** Five different bad jobs each ended as `failed` with a readable reason, and the worker kept going.
+- **Idempotent output keys** turn at-least-once delivery from a risk into a non-issue: running a job again rewrites the same object.
+- **Open points for step 25:** (1) `GET /jobs/{id}` does not show `result_key` yet: the API builds its answer from a fixed set of fields and ignores the extra ones the worker adds, so a client cannot learn where the thumbnail is without reading Redis; step 25 (the test) will need that, or the convention `thumbnails/<name>-<size>.png`. (2) Pillow refuses absurdly large images by itself (decompression-bomb check) but the worker reads each original fully into memory, which the 5 MB upload limit keeps small. (3) The `failed` jobs are not retried: a temporary S3 outage ends the job as `failed` instead of trying again.
 
 ## 5–11. To be completed at the end of Lab 07
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 25). The problems met so far:

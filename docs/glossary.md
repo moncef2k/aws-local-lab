@@ -62,6 +62,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **One-shot job** | A container that does one task and exits (code 0 = success) instead of running forever, like the `migrate` service. | AWS: ECS run-task, Kubernetes Job, CI step · Local: Compose service with `restart: "no"` | 04 |
 | **ORM** (object-relational mapper) | A library that maps tables to classes and rows to objects, and writes the SQL for you. | Local: SQLAlchemy | 04 |
+| **Payload (of a job)** | The inputs of a job, sent with its type: `{"key": "originals/...", "size": "128"}`. The worker reads it from the job record. | Local: `payload` field of `POST /jobs` | 07 |
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
 | **Playwright** | A tool that drives a real browser from a script. Used here to take screenshots. | Documentation tool | 00 |
 | **Port mapping** | Publishing a container port on the host: `127.0.0.1:8000:8000` = host address : host port : container port. | AWS: security group + load balancer listener | 01 |
@@ -90,6 +91,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
+| **Thumbnail** | A small copy of an image, used in lists and previews. The worker makes it with Pillow and stores it under `thumbnails/` in the bucket. | AWS: S3 + SQS + Lambda is the classic pipeline · Local: `worker` with Pillow | 07 |
 | **tmpfs** | A folder kept in memory instead of on disk; its content disappears when the container stops. Used on Redis's `/data` so Docker does not create a hidden volume. | Local: Compose `tmpfs:` | 05 |
 | **TTL** (time to live) | How long a cached value stays valid before it expires by itself. | AWS/Redis: key expiry (`EX`, `TTL`) · Local: Redis | 05 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |
