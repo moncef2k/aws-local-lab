@@ -166,7 +166,7 @@ note 85 created
 ```
 **How to read it:**
 - **1:** one read of one row takes **0.518 ms** from PostgreSQL and **0.137 ms** from Redis: Redis is about **3.8 times faster**. Both are tiny numbers: the lab's database is small, local and fast.
-- **2:** through the API, a **hit** takes **1.148 ms** and a **miss 2.366 ms**: about **2.1 times** faster. (The API does more than the raw read: it parses the request, builds and returns JSON. The miss also reads the database and **writes** the copy into Redis.) The `X-Cache` header proves which case happened: `MISS`, then `HIT`.
+- **2:** through the API, a **hit** takes **1.148 ms** and a **miss 2.366 ms**: about **2.1 times** faster. (The API does more than the raw read: it parses the request, builds and returns JSON. The miss also reads the database and **writes** the copy into Redis.) The `X-Cache` header proves which case happened: `MISS`, then `HIT`. In this script the miss time also includes the `cache.delete(key)` call that prepares it: one more round trip to Redis, about the 0.14 ms measured in section 1, so the miss is slightly overstated.
 - **3:** the **hit ratio** decides the average: with no cache (0 %) 2.4 ms; at **90 %** 1.3 ms; at 99 % 1.2 ms. Most of the gain comes from the first 90 %; the last points add little.
 - **4:** if the read is **expensive** (simulated here as 50 ms), the cache answers in **0.137 ms**: about **375 times faster**. This is where caches really pay: the slower the original read, the bigger the gain.
 
@@ -196,7 +196,7 @@ note 85 created
 </details>
 
 ## Official documentation
-- [Redis: caching use case](https://redis.io/solutions/caching/) and [Redis: client-side and server caching overview](https://redis.io/docs/latest/develop/)
+- [Redis: caching use case](https://redis.io/solutions/caching/) and [Redis documentation: develop with Redis](https://redis.io/docs/latest/develop/)
 - [Amazon ElastiCache: caching strategies](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html)
 - [AWS: What is caching?](https://aws.amazon.com/caching/) (an introduction)
 
