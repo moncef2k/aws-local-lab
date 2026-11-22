@@ -90,6 +90,11 @@ http {
 | `-v "$D/site:/srv/site:ro"` | Make your `site` folder appear as `/srv/site` for Nginx ([Docker 08](../docker/08-volumes-and-bind-mounts.md)). |
 | `curl -si URL` | `-s` quiet, `-i` also print the **response headers**: you see who answered and with what. |
 | `curl -s -o /dev/null -w '%{http_code}\n' URL` | Print only the status code. `-w` also knows `%{time_total}`. |
+| `docker network create nginx01` | A private network for the demo: containers on it reach each other by name (`backend`, `idle`). |
+| `-w /demo` (`docker run`) | Start the process in the folder `/demo` (where your files are mounted). |
+| `$(pwd -W)` | Git Bash on Windows: the current folder written as a Windows path, which Docker needs for `-v` (with `MSYS_NO_PATHCONV=1` so `/demo` is not rewritten). |
+| `curl -m 90 ... -w '%{time_total}'` | `-m 90` give up after 90 seconds; `%{time_total}` prints how long the request took. |
+| `tr -d ''`, `sed -E 's/^Date: .*/.../'` | Clean the output: remove carriage returns, and replace values that change at each run. |
 | `docker logs web` | Nginx's own log: the `[error]` lines say why it returned a `502` or `504`. |
 
 ## Hands-on
@@ -120,7 +125,7 @@ curl -s -m 90 -o /dev/null -w '/hello           -> %{http_code} after %{time_tot
 docker logs web 2>&1 | grep '\[error\]' | tail -1 | sed -E 's/^[0-9/ :]+//; s/, client:.*//'
 docker stop web idle >/dev/null; docker network rm nginx01 >/dev/null
 ```
-Run `bash run.sh` (it takes just over a minute: step 5 waits for a timeout). Real output:
+The script starts the three containers, runs five groups of `curl` (each prints a heading `== N. ...`) and removes everything at the end. Run `bash run.sh` (it takes just over a minute: step 5 waits for a timeout). Real output:
 ```text
 == 1. a file: Nginx answers by itself
 HTTP/1.1 200 OK
@@ -166,7 +171,7 @@ Connection: keep-alive
 - **2:** a missing file is Nginx's own `404` page (`nginx/1.30.6` at the bottom): the backend was never asked, because the path is under `/static/`.
 - **3:** a path under `/`, so the request was **proxied**. The body is the backend's answer (`echo.py`'s JSON), and it **shows what the proxy changed**: `peer_ip` is Nginx's address (`172.24.0.4`), `Host` is `backend:8000`, and there is no `X-Forwarded-For`. The response still carries `Server: nginx/1.30.6`: the client never learns a backend exists. The lab's `lb/nginx.conf` adds the `proxy_set_header` lines for the missing headers ([Networking 04](../networking/04-proxies.md)).
 - **4:** `502 Bad Gateway`. Nginx **reached** the `idle` container, but nothing listened on port 8000 (`Connection refused`). The backend is up as a machine and absent as a program.
-- **5:** the backend container is **stopped**. The **file** is still served (`200`): the web-server role does not need the backend. The proxied path answers `504 Gateway Time-out` **after 60 seconds**: nothing answered at the backend's address, so Nginx waited for its default connect timeout (60 s) and gave up (`upstream timed out ... while connecting to upstream`).
+- **5:** the backend container is **stopped**. The **file** is still served (`200`): the web-server role does not need the backend. The proxied path answers `504 Gateway Time-out` **after 60 seconds**: nothing answered at the backend's address, so Nginx waited for its default connect timeout (60 s) and gave up (`upstream timed out ... while connecting to upstream`). (On this Docker Desktop setup the stopped container's address just swallowed the connection; on another setup it may be refused at once, which would give a `502` instead.)
 
 ## What if…?
 **…you let a dead backend wait 60 seconds?** Step 5 is the answer: a client would stare at a spinner for a minute, and with three replicas and one dead, one request in three would. This is why the lab's `lb/nginx.conf` has `proxy_connect_timeout 1s;` and retries on the next replica ([Lab 02, step 6](../../labs/02-load-balancing.md#step-6--health-checks-and-failover)). Reading an error is the first debugging skill: **`404`** = Nginx found nothing at that path, **`502`** = the backend refused or answered badly, **`504`** = the backend did not answer in time, and the `[error]` line of `docker logs` tells which.
