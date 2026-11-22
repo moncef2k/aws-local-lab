@@ -27,6 +27,7 @@ WORK_SECONDS = float(os.environ.get("WORK_SECONDS", "2"))  # how long a "noop" j
 QUEUE_KEY = "queue:jobs"  # same names as in api/main.py
 PROCESSING_KEY = "queue:processing"
 POLL_SECONDS = 2  # one blocking wait lasts this long: also the longest a stop request waits
+MAX_PIXELS = 25_000_000  # refuse bigger images before decoding: a small PNG can hold billions of pixels
 
 # The object store (S3 in AWS): same settings and same client options as the API (api/main.py).
 S3_BUCKET = os.environ["S3_BUCKET"]
@@ -84,6 +85,8 @@ def make_thumbnail(payload: dict) -> dict:
         raise ValueError("payload.size must be between 16 and 1024")
     data = s3.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read()
     with Image.open(io.BytesIO(data)) as img:  # raises UnidentifiedImageError if it is not an image
+        if img.width * img.height > MAX_PIXELS:  # the size is known from the header: nothing decoded yet
+            raise ValueError(f"image too large: {img.width}x{img.height} pixels (max {MAX_PIXELS})")
         img = ImageOps.exif_transpose(img)  # apply the camera's rotation flag, if any
         if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
             img = img.convert("RGB")  # modes PNG cannot store (CMYK, ...)
