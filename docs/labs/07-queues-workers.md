@@ -1,7 +1,7 @@
 # Lab 07 — Queues and workers (SQS)
 
 > **AWS equivalent:** Amazon SQS (queues, messages, visibility timeout, dead-letter queues) + a worker on ECS or Lambda  ·  **Time:** ~90 min  ·  **Difficulty:** ★★★
-> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22) and `89a7d7c` (step 23) on `dev`
+> **Builds on:** [Lab 06](./06-object-storage.md)  ·  **Reference solution:** commits `b436700` (step 22), `89a7d7c` and `0e475a9` (step 23) on `dev`
 
 > **Status:** in progress. Steps 22–23 are written. Steps 24–25 (thumbnail job, async test) and the closing sections (5–11) come next.
 
@@ -376,9 +376,12 @@ An id that stays in `queue:processing` is a job being worked on, or one whose wo
 
 
    def requeue_unfinished(r: redis.Redis) -> None:
-       """Put back the ids a dead worker left in the processing list (oldest first, ahead of the others)."""
+       """Put back the ids a dead worker left in the processing list, at the tail of the queue (taken next).
+
+       Ids enter the processing list at its head, so the oldest is at the tail. Taking from the head and
+       pushing on the queue's tail puts the oldest last, which is the first one a worker takes."""
        count = 0
-       while r.lmove(PROCESSING_KEY, QUEUE_KEY, "RIGHT", "RIGHT") is not None:
+       while r.lmove(PROCESSING_KEY, QUEUE_KEY, "LEFT", "RIGHT") is not None:
            count += 1
        if count:
            log.warning("requeued %s unfinished job(s) left by a previous worker", count)
@@ -477,11 +480,11 @@ An id that stays in `queue:processing` is a job being worked on, or one whose wo
 
 | Line | What it does | If you change or remove it |
 |---|---|---|
-| `REDIS_URL = os.environ["REDIS_URL"]`, `WORK_SECONDS` | The settings come from the **environment**, like the API: the same image works in any environment. `REDIS_URL` has no default: a missing one stops the worker at start with a `KeyError`. | Hard-coded values would be baked into the image. |
+| `REDIS_URL = os.environ["REDIS_URL"]`, `WORK_SECONDS` | The settings come from the **environment**, like the API: the same image works in any environment. `REDIS_URL` has no default: a missing one stops the worker at start with a `KeyError`. `WORK_SECONDS` is optional (2 unless set; `.env.example` shows it commented). | Hard-coded values would be baked into the image. |
 | `QUEUE_KEY`, `PROCESSING_KEY` | The two list names, the same `queue:jobs` as in `api/main.py`. | If the API and the worker disagree, jobs are never found. |
 | `POLL_SECONDS = 2` | The length of one blocking wait. It is also the longest a stop request can wait for an idle worker. | A large value makes `docker stop` slow for an idle worker. |
 | `signal.signal(signal.SIGTERM, request_stop)` | Installs the handler. It only sets `stopping`: the loop decides when to stop. | Without it, Python as process 1 would ignore `SIGTERM` and `docker stop` would wait the whole grace period, then `SIGKILL` a job in progress. |
-| `requeue_unfinished` / `lmove(PROCESSING, QUEUE, "RIGHT", "RIGHT")` | Moves every id left in the processing list back to the **tail** of the queue (the next to be taken), oldest first. | Without it, a job whose worker died would wait in `queue:processing` forever. |
+| `requeue_unfinished` / `lmove(PROCESSING, QUEUE, "LEFT", "RIGHT")` | Moves every id left in the processing list back to the **tail** of the queue (the next to be taken). Ids enter the processing list at its head, so taking from the **head** and pushing on the tail puts the oldest last pushed, hence first taken. | Without it, a job whose worker died would wait in `queue:processing` forever. With `"RIGHT", "RIGHT"` (the first version) several orphaned ids came back in reverse order: Check 3, second part. |
 | `r.blmove(QUEUE_KEY, PROCESSING_KEY, POLL_SECONDS, "RIGHT", "LEFT")` | The reliable receive: move the oldest id to the processing list, wait up to 2 s if there is none. Returns `None` on timeout. | `brpop` would lose the job if the worker died right after. |
 | `if not r.exists(key)` | The id of a job whose record has expired (24 h) is dropped with a warning, not retried forever. | |
 | `hset(... "status": "processing", "started_at": ...)` | Tells the client the job has started (`GET /jobs/{id}` shows it). | |
@@ -575,6 +578,22 @@ status=done queue:jobs=0 queue:processing=0
 ```
 The new worker found the orphaned id, **requeued** it (`WARNING requeued 1 unfinished job(s)`), picked it up again 1 ms later and finished it: `done`. The job was started **twice** (once by each worker), finished once: that is **at-least-once delivery**.
 
+**Check 3, second part — two orphaned jobs: which one first?** A worker that died while holding **two** ids (simulated by stopping the worker, submitting an older and a newer job, and moving both ids to the processing list by hand with `LMOVE queue:jobs queue:processing RIGHT LEFT`), then a new worker. With the **first version** of the recovery (`"RIGHT", "RIGHT"`):
+```text
+older job = e7a0d120, newer job = 71443419; both sit in queue:processing (left=head): 71443419 e7a0d120
+worker-1  | 2026-11-22 16:50:36,406 WARNING requeued 2 unfinished job(s) left by a previous worker
+16:50:36,407 picked up job 71443419 (noop)
+16:50:37,409 picked up job e7a0d120 (noop)
+```
+The **newer** job ran first: moving from the tail of one list to the tail of the other reverses the order of several ids. (A single worker holds at most one id, so this could not happen in normal use, but the code claimed to keep the order.) The fix is the `LMOVE ... "LEFT", "RIGHT"` of the file above (found by the reviewer of this step, commit `0e475a9`); the same experiment afterwards:
+```text
+older job = c5558780, newer job = bb17e28c; both sit in queue:processing (left=head): bb17e28c c5558780
+worker-1  | 2026-11-22 16:50:59,651 WARNING requeued 2 unfinished job(s) left by a previous worker
+16:50:59,652 picked up job c5558780 (noop)
+16:51:00,654 picked up job bb17e28c (noop)
+```
+The **older** job is picked up first. (`WORK_SECONDS=1` for this test; ids are 8-character prefixes.)
+
 **Check 4 — a graceful stop in the middle of a job** (`WORK_SECONDS=6`; `docker compose stop` while the job is running):
 ```bash
 docker compose stop worker
@@ -591,7 +610,7 @@ status after: done queue:jobs=0 queue:processing=0
 ```
 On `SIGTERM` (signal 15) the worker did **not** stop at once: it finished the job it had (about 3.5 s of the 6 were left), logged `stopped` and exited with code **0**. The stop took 5 s, well inside the 30 s grace period, and nothing was left in either list. Compare with Check 3: a `SIGKILL` loses the work in progress (recovered later), a `SIGTERM` does not.
 
-**Check 5 — what the restart policy does.** After the `docker kill` of Check 3 nobody restarted the worker: `docker compose ps worker` printed nothing. Docker applies a restart policy to a container whose **process exits by itself**, and only once it has been up for 10 seconds; a `docker kill` or `docker stop` is a deliberate stop. A throw-away container shows the difference:
+**Check 5 — what the restart policy does.** After the `docker kill` of Check 3 nobody restarted the worker: `docker compose ps worker` printed nothing. Docker applies a restart policy to a container whose **process exits by itself**, once the container has started successfully (Docker counts a start as successful after 10 seconds of running); a `docker kill` or `docker stop` is a deliberate stop. A throw-away container shows the difference:
 ```bash
 docker run -d --name restart-demo --restart unless-stopped alpine:3.24 sh -c 'sleep 12; exit 1'
 docker inspect -f '{{.RestartCount}}' restart-demo          # at once, then 18 s later
@@ -628,13 +647,13 @@ make test
 - The lab now has a complete **asynchronous pipeline**: `POST /jobs` returns in milliseconds, the worker does the work later, `GET /jobs/{id}` shows the progress. The API and the worker share **nothing but Redis**: they are different images, can be scaled and deployed separately, and one can fail without the other.
 - **A crash does not lose a job** (Check 3), and a **graceful stop does not interrupt one** (Check 4). The cost of the crash case is **at-least-once** delivery: a job can run twice, so real work must be **idempotent** (running it twice must do no harm; a thumbnail that overwrites the same key is).
 - The worker has **no local state** and takes its settings from the environment: it could run on ECS, Kubernetes or Lambda unchanged. Its identity in the logs is the container id.
-- **Limits of this version, on purpose:** (1) the recovery at start-up moves **every** id in the processing list back, which is right for one worker but would steal the jobs other running workers are busy with if you started several (they would then be done twice); SQS avoids this with a per-message visibility timeout, a per-worker processing list with a heartbeat would be the Redis answer. (2) A failing job is marked `failed` and not retried, and there is no dead-letter queue. (3) The queue still lives in the cache-style Redis of Lab 05 (restart = empty queue, see step 22): the status hash and the lists are lost together, so a restart loses jobs **consistently**, but it does lose them.
+- **Limits of this version, on purpose:** (1) the recovery at start-up moves **every** id in the processing list back, which is right for one worker but would steal the jobs other running workers are busy with if you started several (they would then be done twice); SQS avoids this with a per-message visibility timeout, a per-worker processing list with a heartbeat would be the Redis answer. (2) A failing job is marked `failed` and not retried, and there is no dead-letter queue; and only errors raised **inside** the `try` of `process()` are handled: any other exception would end the process, and with `restart: unless-stopped` plus the start-up requeue that becomes a crash loop on one bad job, so the real work of step 24 must stay inside that `try`. (3) The queue still lives in the cache-style Redis of Lab 05 (restart = empty queue, see step 22): the status hash and the lists are lost together, so a restart loses jobs **consistently**, but it does lose them.
 
 ## 5–11. To be completed at the end of Lab 07
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 25). The problems met so far:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| After `docker kill` the worker is **not** started again by `restart: unless-stopped` (`docker compose ps worker` prints nothing, `RestartCount` stays 0) | Docker applies a restart policy when the container's process exits by itself, and only after the container has been up for 10 seconds. `docker kill` and `docker stop` are deliberate stops. | Start it yourself (`docker compose start worker`). A real crash (exit code 1, out of memory) is restarted: see step 23, Check 5. |
+| After `docker kill` the worker is **not** started again by `restart: unless-stopped` (`docker compose ps worker` prints nothing, `RestartCount` stays 0) | Docker applies a restart policy when the container's process exits by itself, once it has started successfully (a start counts as successful after 10 seconds of running). `docker kill` and `docker stop` are deliberate stops. | Start it yourself (`docker compose start worker`). A real crash (exit code 1, out of memory) is restarted: see step 23, Check 5. |
 | `make test` fails in `tests/06_storage.sh` with `upload failed (HTTP 000)` after the worker was added | Right after `04_persistence.sh` restarts the stack, the first upload can answer `502` after about 10 s (`Read timeout on endpoint URL` in the API log) and the test's 10 s curl limit gave up. | `tests/06_storage.sh` tries the first upload up to 5 times (commit `dec7783`). |
 | A job stays `processing` forever | Its worker died and no worker has started since: the id waits in `queue:processing`. | Start a worker: at start-up it requeues the id and redoes the job (step 23, Check 3). |
