@@ -142,7 +142,11 @@ proxy_next_upstream_tries 3;                                    # at most 3 serv
 | `docker inspect -f '{{(index .NetworkSettings.Networks "nginx05").IPAddress}}' b1` | Print one container's IP address on the demo network: the log shows addresses, this tells which is which. |
 | `curl -s -o /dev/null -w '%{http_code}:%{time_total}s ' URL` | Quiet request, body thrown away, prints the status code and the total time. `-X POST -d x` makes it a `POST` with a tiny body. |
 | `docker logs lbdemo` and `grep -F 'GET /retry/fail ->'` | Nginx's access log (every request); `grep -F` searches for that exact text. |
-| `docker stop b3` | Stop (and, with `--rm`, remove) a backend: a **dead** server, to test the connect timeout. |
+| `docker stop b3` | Stop (and, with `--rm`, remove) a backend: a **dead** server, to test the connect timeout. `docker stop lbdemo b1 b2` stops several containers at once. |
+| `docker network create nginx05` / `docker network rm nginx05` | Create the private demo network at the start and delete it at the end, so the containers find each other by name. |
+| `-p 127.0.0.1:18140:8080` | Publish the container's port 8080 on port 18140 of **your machine only** (`127.0.0.1`), so `curl localhost:18140` reaches Nginx ([Networking 05](../networking/05-nat-and-port-forwarding.md)). |
+| `-f '{{(index .NetworkSettings.Networks "nginx05").IPAddress}}'` (of `docker inspect`) | `-f` picks fields out of the container's JSON with a Go template: here the `IPAddress` entry of the network named `nginx05`. |
+| `sed -E 's/:8000//g; s/^.* -> /-> /'` and `grep -F` | `sed -E` rewrites text: `s/old/new/` replaces, `g` = everywhere; here it removes `:8000` and cuts the start of each log line. `grep -F` searches for a fixed text, not a pattern. |
 | `D=$(pwd -W)`, `MSYS_NO_PATHCONV=1`, `sleep` | Git Bash on Windows: the folder as a Windows path and no path rewriting; `sleep N` waits N seconds. |
 
 ## Hands-on
@@ -227,7 +231,7 @@ POST: 504:1.213857s 200:0.205058s 504:1.213695s 200:0.202861s 504:1.215987s 200:
 ## What if…?
 **…you keep the defaults?** Each timeout is **60 seconds**: with a dead server, the unlucky client waits a **minute** before the retry, and a silent server holds a connection (and a browser tab) for a minute. That is why the lab sets `proxy_connect_timeout 1s`. The price of short timeouts is the opposite risk: a server that is merely **slow** (a big report, a first upload to a store that is warming up) is treated as failed and marked down for `fail_timeout`. Timeouts are a **balance** between "fail fast" and "tolerate slowness", tuned per `location`.
 
-**…something still goes wrong once in a while?** Even with these settings, [Lab 02](../../labs/02-load-balancing.md#6-troubleshooting) shows a failover test where **one request in roughly four runs** returns `502` right after a replica is killed (the Nginx log shows a timeout on the killed replica, then `no live upstreams`). This module explains the **parts involved** (the connect timeout, the failure mark, the retry), but the cause of that one failure is **not found yet**: the lab keeps it documented as an open question, with a lead about the DNS refresh of `resolve`.
+**…something still goes wrong once in a while?** Even with these settings, [Lab 02](../../labs/02-load-balancing.md#6-troubleshooting) shows a failover test where **one request in about one run out of three or four** returns `502` right after a replica is killed (the Nginx log shows a timeout on the killed replica, then `no live upstreams`). This module explains the **parts involved** (the connect timeout, the failure mark, the retry), but the cause of that one failure is **not found yet**: the lab keeps it documented as an open question, with a lead about the DNS refresh of `resolve`.
 
 ## In short
 1. Three timeouts (`proxy_connect_timeout`, `proxy_send_timeout`, `proxy_read_timeout`) default to **60 s**; set them to what a user can bear.
