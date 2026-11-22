@@ -40,9 +40,12 @@ def now() -> str:
 
 
 def requeue_unfinished(r: redis.Redis) -> None:
-    """Put back the ids a dead worker left in the processing list (oldest first, ahead of the others)."""
+    """Put back the ids a dead worker left in the processing list, at the tail of the queue (taken next).
+
+    Ids enter the processing list at its head, so the oldest is at the tail. Taking from the head and
+    pushing on the queue's tail puts the oldest last, which is the first one a worker takes."""
     count = 0
-    while r.lmove(PROCESSING_KEY, QUEUE_KEY, "RIGHT", "RIGHT") is not None:
+    while r.lmove(PROCESSING_KEY, QUEUE_KEY, "LEFT", "RIGHT") is not None:
         count += 1
     if count:
         log.warning("requeued %s unfinished job(s) left by a previous worker", count)
