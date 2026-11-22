@@ -54,6 +54,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Make / Makefile** | A tool that runs named recipes (`make up`) defined in a `Makefile`. Used here as a shortcut for long Docker commands. | Local tool | 00 |
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
 | **Migration** | A small numbered script that changes the structure of a database (create a table, add a column). Applied in order, once each, so every copy of the database ends up the same. | Local: Alembic · AWS: run as a task or pipeline step before deployment | 04 |
+| **Name-based routing** | One address and port serving several sites: the proxy reads the `Host` header and picks the matching `server` block. The unmatched requests go to the `default_server`. | AWS: ALB listener rules on the host header · Local: Nginx `server_name` + `default_server` | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **One-shot job** | A container that does one task and exits (code 0 = success) instead of running forever, like the `migrate` service. | AWS: ECS run-task, Kubernetes Job, CI step · Local: Compose service with `restart: "no"` | 04 |
@@ -69,7 +70,6 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
-| **Name-based routing** | One address and port serving several sites: the proxy reads the `Host` header and picks the matching `server` block. The unmatched requests go to the `default_server`. | AWS: ALB listener rules on the host header · Local: Nginx `server_name` + `default_server` | 06 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |

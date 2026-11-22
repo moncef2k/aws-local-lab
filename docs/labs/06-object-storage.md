@@ -694,7 +694,6 @@ make test            # with LB_HOST_PORT=8088 exported
 - A presigned URL is only valid for the **host it was signed for**. The API keeps two views of the store: an internal one to read and write, a public one to sign.
 - The public door is **read-only** (`GET`/`HEAD`) and every link still carries its own signature and deadline.
 - Compare with AWS: there is nothing to configure there, because `s3.amazonaws.com` is already public DNS; the lab has to recreate a public name and a route to get the same effect.
-- Still open for step 21: an automatic test (`tests/06_storage.sh`) that does what Check 1 does by hand.
 
 ### Step 21 — The storage test
 **Why:** steps 19 and 20 were checked by hand. A test turns those checks into one command that anyone (and you, in six months) can re-run, and that goes **red** when something breaks. It also keeps the promises that are easy to break by accident: the link must work from the host, a changed signature must be refused, a link signed for the wrong host must be refused. Like the other tests (`tests/02` to `tests/05`) it needs the lab to be up and finds the load balancer's port by itself with `docker compose port lb 80`.
