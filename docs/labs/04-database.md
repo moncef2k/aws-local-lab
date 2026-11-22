@@ -74,7 +74,7 @@ In the console: **RDS → Databases**, plus **VPC → Security groups** for the 
 | Admin access to a private database | a bastion host, or Systems Manager Session Manager port forwarding, or a VPN; never a public database | the `db-proxy` service (socat), only with `--profile admin`, published on `127.0.0.1` |
 | Running migrations | a task or pipeline step before the deployment (ECS run-task, CI job, Lambda) | the one-shot `migrate` service: `alembic upgrade head`, then it exits |
 | Health | RDS status `Available` | Docker healthcheck with `pg_isready` |
-| Snapshots, Multi-AZ, patching | managed by AWS | not simulated (backups: course module [Databases 09](../courses/README.md)) |
+| Snapshots, Multi-AZ, patching | managed by AWS | not simulated (backups: course module [Databases 09](../courses/databases/09-backups.md)) |
 
 ### 2.4 Diagram
 ```mermaid
@@ -1173,7 +1173,7 @@ docker compose port postgres 5432                                               
 - **Admin access:** never "publicly accessible". You go through a **bastion host** or **Systems Manager Session Manager** port forwarding, or a VPN: the local `db-proxy` with `--profile admin` is that idea in miniature.
 - **Safety nets that RDS adds:** **Multi-AZ** (a synchronous standby in another zone and automatic failover, same endpoint), **automated backups** with point-in-time restore and manual **snapshots** (a restore always creates a **new** instance), **minor-version patching**
   in a maintenance window, **storage autoscaling**, **encryption at rest** (KMS) and **in transit** (TLS), and **CloudWatch** metrics. **Read replicas** are for read scaling, not for safety.
-- **What this lab does not simulate:** failover and Multi-AZ, backups and snapshots (a `pg_dump` is the closest local tool, see [Databases 09](../courses/databases/README.md) once written), patching windows, instance sizing (the container may use all your RAM and CPU), storage limits,
+- **What this lab does not simulate:** failover and Multi-AZ, backups and snapshots (a `pg_dump` is the closest local tool, see [Databases 09](../courses/databases/09-backups.md)), patching windows, instance sizing (the container may use all your RAM and CPU), storage limits,
   encryption, IAM authentication, parameter groups and the multi-zone network. The `postgres` container is a single process with a single disk: if the volume is deleted, the data is gone.
 - **Rough cost:** an RDS instance bills per hour for its **instance class**, plus storage per GB-month, plus backup storage beyond the free allowance, plus data transfer; Multi-AZ roughly doubles the instance part. A small single-zone instance is typically in the range of
   tens of USD per month (check the [RDS pricing page](https://aws.amazon.com/rds/postgresql/pricing/); prices vary by region and change, and a free tier may apply to new accounts for a limited time). Stop or delete test instances, and delete manual snapshots you no longer need

@@ -722,6 +722,7 @@ make test
    QUEUE_KEY = "queue:jobs"  # same names as in api/main.py
    PROCESSING_KEY = "queue:processing"
    POLL_SECONDS = 2  # one blocking wait lasts this long: also the longest a stop request waits
+   MAX_PIXELS = 25_000_000  # refuse bigger images before decoding: a small PNG can hold billions of pixels
 
    # The object store (S3 in AWS): same settings and same client options as the API (api/main.py).
    S3_BUCKET = os.environ["S3_BUCKET"]
@@ -752,6 +753,8 @@ make test
            raise ValueError("payload.size must be between 16 and 1024")
        data = s3.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read()
        with Image.open(io.BytesIO(data)) as img:  # raises UnidentifiedImageError if it is not an image
+           if img.width * img.height > MAX_PIXELS:  # the size is known from the header: nothing decoded yet
+               raise ValueError(f"image too large: {img.width}x{img.height} pixels (max {MAX_PIXELS})")
            img = ImageOps.exif_transpose(img)  # apply the camera's rotation flag, if any
            if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
                img = img.convert("RGB")  # modes PNG cannot store (CMYK, ...)
@@ -799,6 +802,7 @@ make test
 | Line | What it does | If you change or remove it |
 |---|---|---|
 | `S3_BUCKET`, `s3 = boto3.client(...)` | The same endpoint, bucket and keys as the API, from the environment. `path` addressing and a few timeouts, as in step 19. | Without `endpoint_url` boto3 would talk to the real AWS. |
+| `MAX_PIXELS` and `if img.width * img.height > MAX_PIXELS` | Refuses images of more than 25 million pixels **before** decoding them: the size is read from the file's header. A 315 KB PNG can hold 100 million pixels (about 300 MB once decoded) and the 5 MB upload limit does not bound that. | Without it one small upload could use hundreds of megabytes of the worker's memory (Pillow only *warns* above about 89 million pixels, and raises above twice that). |
 | `if not key.startswith("originals/")` | Only objects under `originals/` can be thumbnailed. | A key like `thumbnails/x.png` would produce thumbnails of thumbnails. |
 | `size = int(payload.get("size", "128"))` and the range test | A string payload value is turned into a number, and must be sensible. | Without the limit a client could ask for a 100,000-pixel "thumbnail". |
 | `s3.get_object(...)["Body"].read()` | Downloads the whole original (at most 5 MB: the upload limit of step 19) into memory. | |
@@ -901,7 +905,17 @@ unknown job type                   -> failed |  ValueError: unknown job type 're
 noop still works                   -> done | 
 --- the worker is still running after the failures: Up About a minute; queues: jobs=0 processing=0
 ```
+(The `echo` of the last line was added by hand.)
 Reading it: size 64 gives **64 × 43**; the 100 × 60 image is **not enlarged** (`thumbnail()` only shrinks); and **every** failure ends as `failed` with a message that says why (an uploaded text file, a missing object, a rejected payload, an unknown type). The worker was still running afterwards, with both lists empty: a bad job costs one job, not the worker. This is the first time the `failed` path of step 23 was exercised.
+
+**Check 3, second part — an image with too many pixels** (added after the review of this step). Two PNGs made with Pillow: `large.png`, 5000 × 4000 (20 million pixels, 67 KB) and `huge.png`, 10000 × 10000 (**100 million** pixels, but only 315 KB, well under the 5 MB upload limit). With `MAX_PIXELS = 25_000_000`:
+```text
+1200x800 (as before)           -> done | 128x85
+5000x4000 (20 million pixels)  -> done | 128x102
+10000x10000 (100 million pixels) -> failed |  ValueError: image too large: 10000x10000 pixels (max 25000000)
+worker: Up 22 seconds, restarts: 0; queues: jobs=0 processing=0
+```
+The 20-million-pixel image is shrunk normally (to 128 × 102); the 100-million-pixel one is refused **before** being decoded, with a clear message, and the worker is unaffected (no restart, both lists empty). (The first version of the worker had no such limit: the reviewer pointed out that a small compressed PNG can need hundreds of megabytes when decoded.)
 
 **Check 4 — a design flaw, found by this check.** In the run above the first two jobs concerned the same image, with sizes 128 and 64. In the **first version** the result key was `thumbnails/<name>.png` for both, so the second **overwrote** the first. After adding the size to the key (the code shown above), three jobs for one image (128, then 64, then 128 again) give:
 ```text
@@ -940,7 +954,7 @@ make test
 - The worker is **generic**: it dispatches on the job's `type`, so the next kind of job is one function and one entry in `HANDLERS`.
 - **Untrusted input means a failure path is part of the feature.** Five different bad jobs each ended as `failed` with a readable reason, and the worker kept going.
 - **Idempotent output keys** turn at-least-once delivery from a risk into a non-issue: running a job again rewrites the same object.
-- **Open points for step 25:** (1) `GET /jobs/{id}` does not show `result_key` yet: the API builds its answer from a fixed set of fields and ignores the extra ones the worker adds, so a client cannot learn where the thumbnail is without reading Redis; step 25 (the test) will need that, or the convention `thumbnails/<name>-<size>.png`. (2) Pillow refuses absurdly large images by itself (decompression-bomb check) but the worker reads each original fully into memory, which the 5 MB upload limit keeps small. (3) The `failed` jobs are not retried: a temporary S3 outage ends the job as `failed` instead of trying again.
+- **Open points for step 25:** (1) `GET /jobs/{id}` does not show `result_key` yet: the API builds its answer from a fixed set of fields and ignores the extra ones the worker adds, so a client cannot learn where the thumbnail is without reading Redis; step 25 (the test) will need that, or the convention `thumbnails/<name>-<size>.png`. (2) The worker reads each original fully into memory (at most 5 MB) and refuses images of more than 25 million pixels, but the worker service has **no memory limit** of its own (`mem_limit`). (3) The `failed` jobs are not retried: a temporary S3 outage ends the job as `failed` instead of trying again.
 
 ## 5–11. To be completed at the end of Lab 07
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 25). The problems met so far:
