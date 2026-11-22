@@ -384,3 +384,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 19 | Networking 03 - HTTP requests, responses and status codes | AWSLAB-103 | `2a861c8` | PASS WITH NOTES, notes fixed |
 | step 20 | FastAPI 04 - Pydantic models and validation | AWSLAB-104 | `bd8715c` (+ fix `2b27971`) | PASS WITH NOTES, notes fixed (broken link; 321 lines, accepted) |
 | step 20 | Networking 04 - Proxies: forward vs reverse | AWSLAB-105 | `9b315e1` | PASS |
+| step 21 | Databases 06 - Indexes | AWSLAB-106 | `9823660` (+ fix `737cb5f`) | PASS WITH NOTES, notes fixed |
+| step 21 | Networking 05 - NAT and port forwarding | AWSLAB-107 | `beb84dd` (+ fix `a520736`) | PASS WITH NOTES, notes fixed |
