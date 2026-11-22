@@ -118,6 +118,9 @@ docker stop course-pg9 >/dev/null
 | `docker exec course-pg9 sh -c "..."` | Run a shell line **inside** the container, so `>` redirections and `ls` happen there. |
 | `ls -l FILES \| awk '{print $5, $9}'` | List the files and print only the size in bytes (column 5) and the name (column 9). |
 | `MSYS_NO_PATHCONV=1` | Git Bash on Windows: stop `/tmp/...` arguments from being rewritten into Windows paths. |
+| `grep -E 'CREATE\|COPY' \| cut -c1-110 \| head -8` | Shell filters used to show a few lines of a long file: `grep` keeps the matching lines (`-E` allows `\|` for "or"; `-v` drops them; `-c` counts them), `cut -c1-110` keeps the first 110 characters, `head -8` the first 8 lines. |
+| `sleep 2` | Wait 2 seconds (the server needs a moment after `pg_isready` says yes). |
+| `generate_series(1, 20000)`, `string_agg(x, ',' order by id)` | SQL: produce the numbers 1 to 20000 as rows; glue the values of many rows into one text, in the given order. |
 
 ## Hands-on
 Throw-away container (`postgres:18.7-alpine3.24`). Save `run.sh` and run `bash run.sh`. Real output:
@@ -176,7 +179,7 @@ lab_restored:  20000 rows, md5 a10dc802c6369ea413ae5ed2a17859cd
 - **5:** restoring the same archive into a database that **already** has the tables fails with `relation "notes" already exists` (and `Key (id)=(1) already exists` for the rows). With `--clean --if-exists` each object is dropped first and the restore ends without errors, with the same fingerprint again.
 
 ## What if…?
-**…you never test a restore?** Section 4 is the answer: the only proof a backup works is a restore whose result you **compare** with the original. A dump can be empty, truncated, taken from the wrong database or made with a wrong password and you would only learn it in the worst moment. Real plans schedule a restore test, and keep the backups **elsewhere** (another disk, another machine or region): a backup stored in the same volume dies with it. Not tried here: `pg_dumpall --globals-only` saves the **roles** and their passwords, which `pg_dump` of one database does not.
+**…you never test a restore, or save the roles?** Section 4 is the answer: the only proof a backup works is a restore whose result you **compare** with the original. A dump can be empty, truncated, taken from the wrong database or made with a wrong password and you would only learn it in the worst moment. Real plans schedule a restore test, and keep the backups **elsewhere** (another disk, another machine or region): a backup stored in the same volume dies with it. **…you only back up the database?** `pg_dump` saves **one database**, not the **roles** (users) that own and use it. Measured on a throw-away server with a role `app`: `pg_dump -d lab | grep -c 'CREATE ROLE'` prints `0`, while `pg_dumpall --globals-only` (the roles and other server-wide settings) lists `CREATE ROLE app;` and `CREATE ROLE postgres;` (and the password **hashes** with them: treat that file as a secret). Restoring only the database onto a fresh server would leave its objects owned by roles that do not exist.
 
 ## In short
 1. A **backup** is a separate copy you can rebuild from; volumes and replicas do not replace it. `pg_dump` reads a consistent snapshot of one database without stopping it.
