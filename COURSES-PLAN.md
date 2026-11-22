@@ -154,7 +154,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
-| 01 | Why cache | `01-why-cache.md` | step 15 (Lab 05) | step 26 | - | Redis container; the latency motivation |
+| 01 | Why cache | `01-why-cache.md` | step 15 (Lab 05) | step 26 | AWSLAB-116 | Redis container; the latency motivation |
 | 02 | Redis basics and data types | `02-redis-data-types.md` | step 15 (Lab 05) | step 27 | - | `redis-cli ping`; strings now, lists/hashes in step 22 |
 | 03 | Eviction and `maxmemory` | `03-eviction-and-maxmemory.md` | step 15 (Lab 05) | step 28 | - | `maxmemory` + `allkeys-lru` in the Redis config |
 | 04 | Cache-aside and other patterns | `04-cache-aside-and-patterns.md` | step 16 (Lab 05) | step 29 | - | `GET /notes/{id}` read path |
@@ -355,7 +355,8 @@ back and the plan updated.
 19. [x] Step 23 modules written (Databases 08 and Nginx 02).
 20. [x] Step 24 modules written (Databases 09 and Nginx 03). The Databases course is now complete (9 of 9).
 21. [x] Step 25 modules written (AWS 07 and Nginx 04).
-22. [ ] Next modules: see "Schedule by lab step" (step 26: Caching 01 and Nginx 05).
+22. [x] Step 26 modules written (Caching 01 and Nginx 05).
+23. [ ] Next modules: see "Schedule by lab step" (step 27: Caching 02 and Nginx 08).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_

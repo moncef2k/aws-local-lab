@@ -760,4 +760,5 @@ Redis has **no volume** (step 15), so any `down` empties the cache, with or with
 - [Docker Compose: `tmpfs`](https://docs.docker.com/reference/compose-file/services/#tmpfs) (Docker)
 
 ## Go deeper
+- Course: [Caching 01 - Why cache](../courses/caching/01-why-cache.md)
 - Course: [AWS 07 - ElastiCache](../courses/aws/07-elasticache.md)
