@@ -78,8 +78,26 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # The static frontend (an S3 bucket with static website hosting, behind CloudFront, in AWS): a plain
+  # Nginx that serves the files of ./frontend, read-only. No published port: the load balancer is the
+  # only door and sends the path "/" here.
+  frontend:
+    image: nginx:1.30.6-alpine
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
       retries: 3
