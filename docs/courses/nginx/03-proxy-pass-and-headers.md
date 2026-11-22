@@ -40,9 +40,9 @@ sequenceDiagram
   participant C as client
   participant N as Nginx
   participant B as backend
-  C->>N: GET /strip/hello?x=1  (Host: localhost:18120, X-Forwarded-For: 6.6.6.6)
-  Note over N: location /strip/ { proxy_pass http://backend:8000/; }
-  N->>B: GET /hello?x=1  (Host: localhost, X-Forwarded-For: 6.6.6.6, 172.24.0.1)
+  C->>N: GET /with-headers/x  (Host: localhost:18120, X-Forwarded-For: 6.6.6.6)
+  Note over N: location /with-headers/ { proxy_pass http://backend:8000/;<br/>+ the four proxy_set_header lines }
+  N->>B: GET /x  (Host: localhost, X-Forwarded-For: 6.6.6.6, 172.24.0.1)
   B-->>N: 200
   N-->>C: 200
 ```
@@ -134,7 +134,8 @@ HTTPServer(("0.0.0.0", 8000), Echo).serve_forever()
 | `docker run -d --rm --name backend ... -v "$D:/demo" -w /demo aws-local-lab-api:0.1.0 python echo.py` | The backend, from the project's API image (it has Python); `-w /demo` starts in the folder with `echo.py`. |
 | `D=$(pwd -W)` and `MSYS_NO_PATHCONV=1` | Git Bash on Windows: the folder as a Windows path for `-v`, and no rewriting of `/etc/...` arguments. |
 | `curl -s URL` / `curl -s -H 'Name: value' URL` | Quiet request / with an extra request header (here to forge `X-Forwarded-For` or `Host`). |
-| `sed -E 's/.../\1/'` | Keep only the part of the answer I want to show (the matching text, captured by the parentheses). |
+| `sed -E 's/PATTERN/REPLACEMENT/'` | Replace the text matching `PATTERN` by `REPLACEMENT`; `-E` allows `( )` groups, and a backslash followed by `1` in the replacement means "what the first group matched". In `run.sh`, a pattern with a group keeps only the `"Host": "..."` part of the answer, and `s/, "peer_ip".*//` cuts everything from `, "peer_ip"` on. |
+| `for p in ...; do ...; done`, `printf '%-18s -> '`, `sleep 2` | Shell: repeat for each path; print a label padded to 18 characters so the answers line up (no newline); wait 2 seconds for the containers to start. |
 
 ## Hands-on
 Throw-away containers. Make a folder with `nginx.conf`, `echo.py` and this `run.sh`:
