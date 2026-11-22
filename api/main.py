@@ -112,9 +112,13 @@ class JobIn(BaseModel):
 class JobOut(BaseModel):
     id: str
     type: str
-    status: str  # "queued" now; a worker will move it on (step 23)
+    status: str  # queued -> processing -> done or failed (the worker moves it on)
     created_at: datetime
     payload: dict[str, str]
+    error: str | None = None  # why a job failed
+    result_key: str | None = None  # where the worker stored its result (a thumbnail)
+    result_size: str | None = None  # e.g. "128x85"
+    result_url: str | None = None  # a presigned GET link to the result, like the one of /upload
 
 
 def job_key(job_id: str) -> str:
@@ -122,13 +126,21 @@ def job_key(job_id: str) -> str:
 
 
 def job_out(job_id: str, record: dict[str, str]) -> dict:
-    return {
+    out = {
         "id": job_id,
         "type": record["type"],
         "status": record["status"],
         "created_at": record["created_at"],
         "payload": json.loads(record["payload"]),
+        "error": record.get("error"),
+        "result_key": record.get("result_key"),
+        "result_size": record.get("result_size"),
     }
+    if out["result_key"]:  # signing is local maths, no network call
+        out["result_url"] = s3_public.generate_presigned_url(
+            "get_object", Params={"Bucket": S3_BUCKET, "Key": out["result_key"]}, ExpiresIn=PRESIGN_SECONDS
+        )
+    return out
 
 
 def get_note_or_404(db: Session, note_id: int) -> Note:
@@ -235,7 +247,7 @@ def upload(file: Annotated[UploadFile, File()]):
     return UploadOut(key=key, size=len(data), content_type=content_type, url=url, expires_in=PRESIGN_SECONDS)
 
 
-@app.post("/jobs", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED)
+@app.post("/jobs", response_model=JobOut, response_model_exclude_none=True, status_code=status.HTTP_202_ACCEPTED)
 def create_job(data: JobIn):
     """Queue a job and answer at once. 202 means "accepted", not "done": a worker does the work later."""
     job_id = uuid4().hex
@@ -258,7 +270,7 @@ def create_job(data: JobIn):
     return job_out(job_id, record)
 
 
-@app.get("/jobs/{job_id}", response_model=JobOut)
+@app.get("/jobs/{job_id}", response_model=JobOut, response_model_exclude_none=True)
 def get_job(job_id: Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]):
     """The current state of a job: poll this until the status is "done"."""
     try:
