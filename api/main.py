@@ -246,7 +246,7 @@ def create_job(data: JobIn):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
-        pipe = queue.pipeline(transaction=True)  # MULTI/EXEC: the three commands run together or not at all
+        pipe = queue.pipeline(transaction=True)  # MULTI/EXEC: sent and run as one block, nothing in between
         pipe.hset(job_key(job_id), mapping=record)  # the record first ...
         pipe.expire(job_key(job_id), JOB_TTL)  # ... that disappears by itself after a day ...
         pipe.lpush(QUEUE_KEY, job_id)  # ... then the id joins the queue
