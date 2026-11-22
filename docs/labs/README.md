@@ -34,7 +34,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [05](./05-caching.md) | Caching (cache-aside) | ElastiCache | ✅ done |
 | [06](./06-object-storage.md) | Object storage and presigned URLs | S3 | ✅ done |
 | [07](./07-queues-workers.md) | Queues and workers | SQS, Lambda / ECS workers | ✅ done |
-| 08 | Static frontend and caching headers | S3 static hosting, CloudFront | ⬜ planned |
+| [08](./08-frontend-cdn.md) | Static frontend and caching headers | S3 static hosting, CloudFront | 🚧 in progress |
 | 09 | Monitoring and logs | CloudWatch | ⬜ planned |
 | 10 | Testing an architecture, failure tests, load tests | — (k6) | ⬜ planned |
 | 11 | Kubernetes | EKS | ⬜ planned |

@@ -24,6 +24,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Compose profile** | A label on a Compose service (`profiles: ["admin"]`) that keeps it switched off unless you ask for it with `--profile admin`. | Local: used for the optional `db-proxy` | 04 |
 | **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
+| **CORS** (cross-origin resource sharing) | Browser rule: a page from one address may call an API on **another** address only if that API says so in response headers. When the page and the API share one address (as in this lab) no CORS setup is needed. | AWS: CORS settings of S3 / API Gateway · Local: not needed, one origin | 08 |
 | **CRUD** | Create, Read, Update, Delete: the four basic things you can do with stored records. In an HTTP API they map to `POST`, `GET`, `PUT`, `DELETE`. | Local: the `/notes` routes of the API | 04 |
 | **Dead-letter queue (DLQ)** | A second queue that receives the messages that failed too many times, so one bad message does not loop forever and can be inspected. | AWS: SQS DLQ + `maxReceiveCount` · Local: not simulated | 07 |
 | **Defence in depth** | Several layers of protection, so that getting through one (say, a bug in the API) does not give access to everything (say, the database). | AWS: public/private subnets + security groups · Local: `public` and `private` networks | 03 |
@@ -33,6 +34,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **`.env` file** | A local file of settings and secrets, read by Docker Compose. Never committed to Git; `.env.example` is the committed template. | Local only (AWS: Secrets Manager / Parameter Store) | 00 |
 | **ECR** (Elastic Container Registry) | AWS's private store for container images. | Local: the Docker image store | 01 |
 | **EC2** | Virtual machines in AWS. | Local: a container is a lighter equivalent | 01 |
+| **Edge location** | A CDN server near the users that keeps copies of your static files, so they travel a short distance. | AWS: CloudFront edge locations · Local: not simulated | 08 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
 | **Eviction (LRU)** | What a full cache does to make room: it deletes entries. **LRU** (least recently used) deletes the ones unused the longest. | AWS: ElastiCache parameter `maxmemory-policy` · Local: `--maxmemory-policy allkeys-lru` | 05 |
@@ -61,6 +63,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
 | **Non-root user** | Running the app as an unprivileged user inside the container, so a compromised app has little power. | AWS: same advice for ECS/EKS tasks | 01 |
 | **One-shot job** | A container that does one task and exits (code 0 = success) instead of running forever, like the `migrate` service. | AWS: ECS run-task, Kubernetes Job, CI step · Local: Compose service with `restart: "no"` | 04 |
+| **Origin (of a CDN)** | The place where the original files live (an S3 bucket, a load balancer); the CDN fetches from it and caches copies. | AWS: CloudFront origin · Local: the `frontend` container | 08 |
 | **ORM** (object-relational mapper) | A library that maps tables to classes and rows to objects, and writes the SQL for you. | Local: SQLAlchemy | 04 |
 | **Payload (of a job)** | The inputs of a job, sent with its type: `{"key": "originals/...", "size": "128"}`. The worker reads it from the job record. | Local: `payload` field of `POST /jobs` | 07 |
 | **Pinning** | Fixing an exact version (`python:3.12.16-slim-trixie`, `fastapi==0.163.0`) instead of "latest", so a rebuild gives the same result. | Good practice everywhere | 01 |
