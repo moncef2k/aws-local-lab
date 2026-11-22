@@ -40,8 +40,14 @@ field() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }   # a string field of the
 # 1. Upload 200,000 random bytes.
 in_tmp sh -c 'head -c 200000 /dev/urandom > blob.bin'
 sum_before=$(sha256sum "$tmp/blob.bin" | cut -d' ' -f1)
-code=$(in_tmp curl -s --max-time 10 -o up.json -w '%{http_code}' -F "file=@blob.bin;type=application/octet-stream" "$url/upload")
-resp=$(cat "$tmp/up.json")
+# The very first upload after a fresh start can answer 502 after about 10 seconds, while the S3 server is
+# still settling (Lab 06, troubleshooting): try up to 5 times before calling it a failure.
+for attempt in 1 2 3 4 5; do
+  code=$(in_tmp curl -s --max-time 20 -o up.json -w '%{http_code}' -F "file=@blob.bin;type=application/octet-stream" "$url/upload")
+  [ "$code" = 201 ] && break
+  echo "  wait  upload attempt $attempt answered HTTP $code, trying again"
+done
+resp=$(cat "$tmp/up.json" 2>/dev/null)
 key=$(echo "$resp" | field key)
 link=$(echo "$resp" | field url)
 if [ "$code" = 201 ] && [ -n "$key" ] && [ -n "$link" ]; then
