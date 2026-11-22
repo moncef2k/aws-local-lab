@@ -236,7 +236,7 @@ The index is **sorted by `title`**, not by `lower(title)`, so it cannot be used.
 - [PostgreSQL: `CREATE INDEX`](https://www.postgresql.org/docs/current/sql-createindex.html)
 
 ## Where you use this in the project
-- [Lab 04, step 12](../../labs/04-database.md): `GET /notes/{id}` is a primary-key lookup, the case of exercise 2. `GET /notes` returns **every** note, so no index can avoid reading them all: that route is one to limit (paginate) when the table grows.
+- [Lab 04, step 12](../../labs/04-database.md): `GET /notes/{id}` is a primary-key lookup, the case of step 2 of the experiment. `GET /notes` returns **every** note, so no index can avoid reading them all: that route is one to limit (paginate) when the table grows.
 - [Databases 04](./04-schemas-and-migrations.md): the migration that creates `notes` declares `primary_key=True`; adding any other index later is a new migration (`op.create_index`).
 - [Databases 05](./05-sqlalchemy.md): an index declared on a SQLAlchemy model reaches the real database only through a migration, like any other schema change.
 - [Lab 05](../../labs/05-caching.md): a cache is the other way to make a repeated read fast, by not asking the database at all.
