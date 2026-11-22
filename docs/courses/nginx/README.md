@@ -13,7 +13,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 | 02 | [Config structure, `server` and `location` matching](./02-config-server-location.md) | ✅ written | Lab 02, step 4 |
 | 03 | [`proxy_pass` and proxy headers](./03-proxy-pass-and-headers.md) | ✅ written | Lab 02, step 4 |
 | 04 | [Upstreams and load-balancing methods](./04-upstream-and-load-balancing.md) | ✅ written | Lab 02, step 5 |
-| 05 | Timeouts, retries and passive health checks | ⬜ planned | Lab 02, step 6 |
+| 05 | [Timeouts, retries and passive health checks](./05-timeouts-retries-failover.md) | ✅ written | Lab 02, step 6 |
 | 06 | Static files and caching headers | ⬜ planned | Lab 08, step 26 |
 | 07 | HTTPS in Nginx | ⬜ planned | Lab 08, step 28 |
 | 08 | Logs and debugging | ⬜ planned | Lab 02, step 4 |

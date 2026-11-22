@@ -722,3 +722,4 @@ make down        # stops and removes the containers and the network; nothing els
 - Course: [Nginx 02 - Config structure, `server` and `location` matching](../courses/nginx/02-config-server-location.md)
 - Course: [Nginx 03 - `proxy_pass` and proxy headers](../courses/nginx/03-proxy-pass-and-headers.md)
 - Course: [Nginx 04 - Upstreams and load-balancing methods](../courses/nginx/04-upstream-and-load-balancing.md)
+- Course: [Nginx 05 - Timeouts, retries and passive health checks](../courses/nginx/05-timeouts-retries-failover.md)
