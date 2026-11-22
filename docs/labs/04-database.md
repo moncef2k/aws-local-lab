@@ -1233,3 +1233,4 @@ make clean         # deletes the volume too (ALL lab data); it asks you to type 
 - Course: [FastAPI 04 - Pydantic models and validation](../courses/fastapi/04-pydantic.md)
 - Course: [Databases 06 - Indexes](../courses/databases/06-indexes.md)
 - Course: [Databases 07 - Transactions](../courses/databases/07-transactions.md)
+- Course: [Databases 08 - Connection pooling](../courses/databases/08-connection-pooling.md)
