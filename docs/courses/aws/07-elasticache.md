@@ -69,7 +69,7 @@ sequenceDiagram
 
 | ElastiCache piece | What the lab has instead |
 |---|---|
-| Cluster / replication group | one `redis` container (`role:master`, no replicas: step 4 of the hands-on) |
+| Cluster / replication group | one `redis` container (`role:master`, no replicas: section 4 of hands-on 1) |
 | Engine and version | `redis:8.10.3-alpine3.23` (pinned) |
 | Node type (memory) | `--maxmemory 64mb` |
 | Parameter group (`maxmemory-policy`) | the flag `--maxmemory-policy allkeys-lru` |
@@ -115,9 +115,24 @@ The lab's `redis` service (`docker-compose.yml`, [Lab 05, step 15](../../labs/05
 | `redis-cli replicaof no one` | Stop being a replica and become a primary (a **promotion**: what ElastiCache's failover does). |
 | `docker kill ec-primary` | Kill the primary at once: a crash, not a clean stop. |
 | `tr -d '\r'` | Delete carriage returns from Redis's answers. |
+| `docker network create ec-demo` | A private network for the demo, so the two containers find each other by name (`ec-primary`). |
+| `for _ in $(seq 30); do ... && break; sleep 1; done` | Try up to 30 times: stop (`break`) as soon as the replica reports `master_link_status:up`, otherwise wait one second (`sleep 1`) and try again. A loop with a deadline, never an endless wait. |
+| `grep -q 'text'` | Search quietly: no output, only the exit status (success if found). |
 
 ## Hands-on
-**1. The lab's own Redis, read as an ElastiCache cluster.** Against the running stack (Lab 05). Real output:
+**1. The lab's own Redis, read as an ElastiCache cluster.** Against the running stack (Lab 05). The commands (each block of the output below comes from one of them; `r` is a small helper that runs `redis-cli` inside the container with the password from its environment):
+```bash
+r() { docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli "$@"' sh "$@" | tr -d '\r'; }
+r info server | grep -E '^(redis_version|redis_mode|tcp_port|os):'
+for k in maxmemory maxmemory-policy appendonly save; do printf '%s = %s\n' "$k" "$(r config get $k | tail -1)"; done
+r info memory | grep -E '^(used_memory_human|maxmemory_human|maxmemory_policy):'
+r info replication | grep -E '^(role|connected_slaves):'
+r info stats | grep -E '^(keyspace_hits|keyspace_misses|evicted_keys|total_connections_received):'
+r info keyspace | grep db0
+docker compose exec -T redis redis-cli ping      # no password
+docker compose port redis 6379                   # is the port published?
+```
+Real output:
 ```text
 --- 1. engine
 redis_version:8.10.3
@@ -164,7 +179,7 @@ docker network create ec-demo >/dev/null
 docker run -d --rm --name ec-primary --network ec-demo $IMG redis-server --requirepass demo-only-not-a-secret --save "" --appendonly no >/dev/null
 docker run -d --rm --name ec-replica --network ec-demo $IMG redis-server --requirepass demo-only-not-a-secret \
   --masterauth demo-only-not-a-secret --replicaof ec-primary 6379 --save "" --appendonly no >/dev/null
-until rc ec-replica info replication 2>/dev/null | grep -q 'master_link_status:up'; do sleep 1; done   # wait for the first copy
+for _ in $(seq 30); do rc ec-replica info replication 2>/dev/null | grep -q 'master_link_status:up' && break; sleep 1; done   # wait (30 s at most) for the first copy
 
 echo "== 1. who is who"
 echo "primary: $(rc ec-primary info replication | grep -E '^(role|connected_slaves):' | tr '\n' ' ')"
