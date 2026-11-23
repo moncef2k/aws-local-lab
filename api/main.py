@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import socket
+import time
 from datetime import datetime, timezone
 from typing import Annotated, Iterator
 from uuid import uuid4
@@ -11,7 +12,8 @@ import boto3
 import redis
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import Depends, FastAPI, File, HTTPException, Path, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Path, Request, Response, UploadFile, status
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +24,30 @@ app = FastAPI(title="aws-local-lab API")
 
 # Uvicorn's logger: it is already set up, so our lines show in "docker compose logs api".
 log = logging.getLogger("uvicorn.error")
+
+# Metrics (CloudWatch metrics in AWS): numbers kept in memory by this process and shown as text at
+# GET /metrics, for Prometheus to read (step 30). Each replica counts only its own requests.
+# The "path" label is the route template (/notes/{note_id}), never the real URL: one series per route,
+# not one per note id.
+REQUESTS = Counter("http_requests_total", "HTTP requests handled", ["method", "path", "status"])
+LATENCY = Histogram("http_request_duration_seconds", "Time to handle one request", ["method", "path"])
+
+
+@app.middleware("http")
+async def record_metrics(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)  # do not count the reads of the metrics themselves
+    start = time.perf_counter()
+    status_code = 500  # what is counted if the handler raises
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        path = route.path if route else "unmatched"
+        LATENCY.labels(request.method, path).observe(time.perf_counter() - start)
+        REQUESTS.labels(request.method, path, str(status_code)).inc()
 
 # The cache. Short timeouts: a slow or dead cache must not make the API slow too.
 cache = redis.Redis.from_url(
@@ -160,6 +186,12 @@ def health():
 def whoami():
     """Which container answered? Inside Docker the hostname is the container id."""
     return {"hostname": socket.gethostname()}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    """The metrics of THIS replica, in the text format Prometheus reads."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)

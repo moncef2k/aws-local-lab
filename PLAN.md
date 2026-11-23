@@ -139,7 +139,7 @@ Nothing will be installed system-wide without asking you first.
 - [x] **28. Local HTTPS (optional).** `AWSLAB-46` 🔀 mkcert cert, LB listens on 443, 80 redirects. Needs mkcert installed (will ask). *Decision (you, step 28): no install; a self-signed certificate made with OpenSSL in a container (`make cert`), HTTPS published on 8443 because 443 is taken, and only the page `/` is redirected so API clients and tests keep using HTTP.* *Check:* `curl https://localhost/health`. Skipped and documented if you decline.
 
 ### Lab 09 — Monitoring (CloudWatch) · epic `AWSLAB-13`
-- [ ] **29. API `/metrics`.** `AWSLAB-47` `prometheus-client` middleware (request count, latency histogram, errors). *Check:* `curl /metrics` shows `http_requests_total`.
+- [x] **29. API `/metrics`.** `AWSLAB-47` `prometheus-client` middleware (request count, latency histogram, errors). *Check:* `curl /metrics` shows `http_requests_total`.
 - [ ] **30. Prometheus.** `AWSLAB-48` Scrapes all 3 replicas through Docker DNS service discovery. *Check:* `/targets` shows 3 up (screenshot).
 - [ ] **31. cAdvisor.** `AWSLAB-49` Per-container CPU/RAM metrics (may need Docker Desktop/WSL2 tweaks — will explain if not). *Check:* `container_cpu_usage_seconds_total` returns series.
 - [ ] **32. Grafana + datasource provisioning.** `AWSLAB-50` Behind LB at `grafana.localhost`, admin password from `.env`. *Check:* login works, Prometheus datasource green.
