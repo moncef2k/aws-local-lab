@@ -360,7 +360,8 @@ back and the plan updated.
 24. [x] Step 28 modules written (Caching 03 and FastAPI 01).
 25. [x] Step 29 modules written (Caching 04 and FastAPI 02).
 26. [x] Step 30 modules written (Caching 05 and FastAPI 05).
-27. [ ] Next modules: see "Schedule by lab step" (step 31).
+27. [x] Step 31 modules written (Caching 06 and FastAPI 06). The Caching course is now complete (6 of 6).
+28. [ ] Next modules: see "Schedule by lab step" (step 32).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -413,3 +414,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 29 | FastAPI 02 - Uvicorn and ASGI | AWSLAB-123 | `f6c7c3b` (+ fix `059fcc9`) | PASS WITH NOTES, notes fixed (what-if now run) |
 | step 30 | Caching 05 - TTL, expiry and invalidation | AWSLAB-124 | `6acd95f` (+ fix `88af683`) | PASS WITH NOTES, notes fixed |
 | step 30 | FastAPI 05 - Automatic OpenAPI docs | AWSLAB-125 | `6979ee3` | PASS |
+| step 31 | Caching 06 - Common pitfalls (stampede, stale data, penetration) | AWSLAB-126 | `986c600` (+ fix `c1b6b04`) | PASS WITH NOTES, notes fixed |
+| step 31 | FastAPI 06 - async def vs def | AWSLAB-127 | `2495555` (+ fix `115acbe`) | PASS WITH NOTES, notes fixed |
