@@ -186,12 +186,44 @@ PID                 USER                COMMAND
 (The PID is the host-side number, so it differs from the `1` seen inside the container.) One worker per container, three containers behind the load balancer: scaling is done by **adding containers** (as in ECS or Kubernetes), not by adding workers.
 
 ## What if…?
-**…you used `--workers` in this project?** Processes do **not share memory**: C above shows two different PIDs, each with its own copy of the application. Anything the application keeps in a Python variable — the metrics counters added in [Lab 09, step 29](../../labs/09-monitoring.md), a cache in a dictionary — would then be split between the workers, and each `GET /metrics` would show only the numbers of the worker that happened to answer. This is one reason the lab keeps **one worker per container** and lets the load balancer spread requests over three containers: each replica's metrics are complete for that replica, and Prometheus (step 30) adds the replicas up. (This is an explanation of what the PIDs imply; the lab itself was not run with `--workers`.)
+**…you used `--workers` with in-memory metrics?** Processes do **not share memory**. A small app (`counted.py`) counts its own requests with a `prometheus_client` counter, as the API does in [Lab 09, step 29](../../labs/09-monitoring.md), and has a `/metrics` route:
+
+```python
+import os
+
+from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+
+app = FastAPI()
+HITS = Counter("hits_total", "requests seen by this process")
+
+
+@app.get("/ping")
+def ping():
+    HITS.inc()                                   # one more request seen by THIS process
+    return {"pid": os.getpid()}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+```
+Start it with two workers (as in experiment C, with `counted:app`), send 20 requests to `/ping`, then read `/metrics` six times and count the different answers:
+
+```bash
+for i in $(seq 1 19); do curl -s -o /dev/null http://127.0.0.1:8774/ping; done     # plus the readiness request: 20 in all
+for i in 1 2 3 4 5 6; do curl -s http://127.0.0.1:8774/metrics | grep '^hits_total'; done | sort | uniq -c
+```
+```text
+      3 hits_total 12.0
+      3 hits_total 8.0
+```
+**How to read it:** there were 20 requests, but `/metrics` **never says 20**: it says `12` when worker A answers and `8` when worker B answers (the same 12/8 split as in C). Each worker only knows its own count. This is why the lab keeps **one worker per container**: each replica's metrics are then complete for that replica, and Prometheus (step 30) adds the replicas up. (The `prometheus_client` library does have a "multiprocess mode" with shared files for this case; the lab does not need it.)
 
 ## In short
 1. **Uvicorn** speaks HTTP with the network; **FastAPI** decides what to answer; **ASGI** is the small contract between them: the application is a function `app(scope, receive, send)`.
 2. `uvicorn main:app --host 0.0.0.0 --port 8000` = "run the `app` of `main.py`, accept connections from anywhere, on port 8000". In a container, `--host 127.0.0.1` makes it unreachable.
-3. `--workers N` starts N separate processes (no shared memory). The lab uses one per container and scales by adding containers.
+3. `--workers N` starts N separate processes (no shared memory: their counters differ). The lab uses one per container and scales by adding containers.
 
 ## Check your understanding
 1. What are the roles of Uvicorn and FastAPI in answering one request?
