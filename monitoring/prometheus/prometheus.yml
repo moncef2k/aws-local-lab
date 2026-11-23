@@ -1,0 +1,23 @@
+# Prometheus configuration (read-only, mounted by docker-compose.yml).
+# Prometheus PULLS: every scrape_interval it opens http://<target>/metrics and stores the numbers.
+
+global:
+  scrape_interval: 5s       # how often to read every target (15-60 s is more usual; 5 s makes the lab lively)
+  evaluation_interval: 15s  # how often rules are evaluated (no rules yet)
+
+scrape_configs:
+  # The 3 API replicas. The Docker DNS name "api" answers with the address of EVERY replica, so one
+  # DNS query finds all of them, and a replica that is added, removed or re-created is picked up
+  # at the next refresh. (Like ECS service discovery or Kubernetes endpoints in a real setup.)
+  - job_name: api
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["api"]
+        type: A
+        port: 8000
+        refresh_interval: 5s
+
+  # Prometheus also exposes metrics about itself.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

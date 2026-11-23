@@ -85,6 +85,8 @@ services:
         condition: service_healthy
       frontend:
         condition: service_healthy
+      prometheus:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
       interval: 10s
@@ -103,6 +105,28 @@ services:
       - private
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # The metrics server (CloudWatch Metrics, or Managed Prometheus, in AWS). It PULLS /metrics from the
+  # API replicas every few seconds (monitoring/prometheus/prometheus.yml). No published port: the
+  # load balancer shows its web page at http://prometheus.localhost.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Keep two days of numbers: plenty for a lab, and the disk does not fill up.
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/healthy"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -261,3 +285,5 @@ volumes:
   pgdata:
   # The object store's files (like the storage behind an S3 bucket).
   s3data:
+  # The metrics history of Prometheus (two days).
+  promdata:

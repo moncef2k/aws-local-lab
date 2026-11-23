@@ -5,6 +5,9 @@
 # Usage:  scripts/screenshot.sh <url> <out.png> [extra-wait-ms]
 #   e.g.  scripts/screenshot.sh http://grafana.localhost/ docs/labs/images/lab-09/grafana.png 2000
 #
+# Some pages never go "idle" because they keep a streaming request open (the Prometheus web page does).
+# For those, run with SHOT_WAIT_UNTIL=load: the shot is taken after the load event plus the extra wait.
+#
 # Pages served by the load balancer use names like grafana.localhost. Inside the container
 # "localhost" is the container itself, so for every *.localhost host we add
 # `--add-host <name>:host-gateway` (= the Docker host, where the LB listens on port 80/443).
@@ -37,7 +40,7 @@ mkdir -p "$(dirname "$out")"
 out_dir="$(cd "$(dirname "$out")" && { pwd -W 2>/dev/null || pwd; })"
 out_name="$(basename "$out")"
 
-docker_args=(run --rm -i -v "$out_dir:/out" -e "SHOT_HOST=$host")
+docker_args=(run --rm -i -v "$out_dir:/out" -e "SHOT_HOST=$host" -e "SHOT_WAIT_UNTIL=${SHOT_WAIT_UNTIL:-networkidle}")
 case "$host" in
   *.localhost) docker_args+=(--add-host "$host:host-gateway") ;;
   localhost | 127.0.0.1)
@@ -66,7 +69,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(args=args)
     # Local mkcert certificates are not trusted inside the container.
     page = browser.new_page(viewport={"width": width, "height": height}, ignore_https_errors=True)
-    page.goto(url, wait_until="networkidle", timeout=30000)
+    page.goto(url, wait_until=os.environ.get("SHOT_WAIT_UNTIL", "networkidle"), timeout=30000)
     page.wait_for_timeout(wait_ms)
     page.screenshot(path=out, full_page=True)
     browser.close()
