@@ -765,4 +765,5 @@ Redis has **no volume** (step 15), so any `down` empties the cache, with or with
 - Course: [Caching 03 - Eviction and maxmemory](../courses/caching/03-eviction-and-maxmemory.md)
 - Course: [Caching 04 - Cache-aside and other patterns](../courses/caching/04-cache-aside-and-patterns.md)
 - Course: [Caching 05 - TTL, expiry and invalidation](../courses/caching/05-ttl-and-invalidation.md)
+- Course: [Caching 06 - Common pitfalls (stampede, stale data, penetration)](../courses/caching/06-pitfalls.md)
 - Course: [AWS 07 - ElastiCache](../courses/aws/07-elasticache.md)
