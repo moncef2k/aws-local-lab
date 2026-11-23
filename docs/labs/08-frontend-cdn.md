@@ -538,7 +538,11 @@ The page says `no-cache`, the hashed script says `public, max-age=31536000, immu
 **Check 2 — the step's check: `200`, then `304` with `If-None-Match`.** Ask twice: the second time, send the `ETag` back, as a browser does:
 ```bash
 curl -s -D - -o /dev/null http://127.0.0.1:8088/                                   # 1st request
-curl -s -D - -o /dev/null -H 'If-None-Match: "6b04051c-9df"' http://127.0.0.1:8088/   # 2nd request
+curl -s -D - -o /dev/null -H 'If-None-Match: "6b04051c-9df"' http://127.0.0.1:8088/   # 2nd request: the ETag sent back
+# the same two requests for the script (its own ETag), then a stale ETag on the page:
+curl -s -D - -o /dev/null http://127.0.0.1:8088/assets/app.540efee7.js
+curl -s -D - -o /dev/null -H 'If-None-Match: "6b04051c-89d"' http://127.0.0.1:8088/assets/app.540efee7.js
+curl -s -D - -o /dev/null -H 'If-None-Match: "old-version"' http://127.0.0.1:8088/
 ```
 ```text
 === /
