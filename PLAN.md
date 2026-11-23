@@ -136,7 +136,7 @@ Nothing will be installed system-wide without asking you first.
 ### Lab 08 — Frontend & CDN (S3 static hosting + CloudFront) · epic `AWSLAB-12`
 - [x] **26. Static frontend.** `AWSLAB-44` `frontend/` (HTML/JS) served by its own Nginx container behind the LB at `/`; shows which API instance answered each call. *Check:* open in browser; reload shows different instances.
 - [x] **27. Caching headers.** `AWSLAB-45` `Cache-Control`, `ETag`, `immutable` for hashed assets, `no-cache` for `index.html`. *Check:* `curl -I` → 200 then 304 with `If-None-Match`; screenshot via `scripts/screenshot.sh`.
-- [ ] **28. Local HTTPS (optional).** `AWSLAB-46` 🔀 mkcert cert, LB listens on 443, 80 redirects. Needs mkcert installed (will ask). *Check:* `curl https://localhost/health`. Skipped and documented if you decline.
+- [x] **28. Local HTTPS (optional).** `AWSLAB-46` 🔀 mkcert cert, LB listens on 443, 80 redirects. Needs mkcert installed (will ask). *Decision (you, step 28): no install; a self-signed certificate made with OpenSSL in a container (`make cert`), HTTPS published on 8443 because 443 is taken, and only the page `/` is redirected so API clients and tests keep using HTTP.* *Check:* `curl https://localhost/health`. Skipped and documented if you decline.
 
 ### Lab 09 — Monitoring (CloudWatch) · epic `AWSLAB-13`
 - [ ] **29. API `/metrics`.** `AWSLAB-47` `prometheus-client` middleware (request count, latency histogram, errors). *Check:* `curl /metrics` shows `http_requests_total`.

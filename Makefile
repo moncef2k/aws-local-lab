@@ -13,16 +13,27 @@ endif
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs clean test load-test
+.PHONY: help up cert down logs clean test load-test
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
 
-up: ## Build and start the lab in the background
+up: cert ## Build and start the lab in the background
 	@if [ -z "$$($(COMPOSE) config --services)" ]; then \
 	  echo "no services defined yet in docker-compose.yml - nothing to start"; \
 	else \
 	  $(COMPOSE) up -d --build --remove-orphans; \
+	fi
+
+# OpenSSL runs in a throw-away container, so nothing but Docker is needed on the host.
+cert: ## Make a self-signed certificate for localhost in certs/ (once; for HTTPS, Lab 08 step 28)
+	@mkdir -p certs
+	@if [ -f certs/localhost.pem ]; then \
+	  echo "certs/localhost.pem exists (delete the certs folder to make a new one)"; \
+	else \
+	  MSYS_NO_PATHCONV=1 docker run --rm -v "$$(pwd -W 2>/dev/null || pwd):/work" -w /work alpine:3.24 sh -c \
+	    'apk add -q --no-cache openssl && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 365 -keyout certs/localhost.key -out certs/localhost.pem -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1"' \
+	  && echo "certificate written: certs/localhost.pem (private key: certs/localhost.key, both ignored by git)"; \
 	fi
 
 down: ## Stop the lab (data volumes are kept)
