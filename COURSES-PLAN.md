@@ -121,7 +121,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 05 | Timeouts, retries and passive health checks | `05-timeouts-retries-failover.md` | step 6 (Lab 02) | step 26 | AWSLAB-117 | `max_fails`, `fail_timeout`, `proxy_next_upstream` |
 | 06 | Static files and caching headers | `06-static-files-and-caching-headers.md` | step 26 (Lab 08) | step 39 | - | Frontend Nginx; `Cache-Control`, `ETag` (27) |
 | 07 | HTTPS in Nginx | `07-https.md` | step 28 (Lab 08) | step 40 | - | `listen 443 ssl`, certificate, 80 to 443 redirect |
-| 08 | Logs and debugging | `08-logs-and-debugging.md` | step 4 (Lab 02) | step 27 | - | `nginx -t`, `docker logs lb`, access/error log formats |
+| 08 | Logs and debugging | `08-logs-and-debugging.md` | step 4 (Lab 02) | step 27 | AWSLAB-119 | `nginx -t`, `docker logs lb`, access/error log formats |
 
 ### FastAPI - How the Python API in this project works. (7 modules + 1 on request)
 
@@ -356,7 +356,8 @@ back and the plan updated.
 20. [x] Step 24 modules written (Databases 09 and Nginx 03). The Databases course is now complete (9 of 9).
 21. [x] Step 25 modules written (AWS 07 and Nginx 04).
 22. [x] Step 26 modules written (Caching 01 and Nginx 05).
-23. [ ] Next modules: see "Schedule by lab step" (step 27: Caching 02 and Nginx 08).
+23. [x] Step 27 modules written (Caching 02 and Nginx 08).
+24. [ ] Next modules: see "Schedule by lab step" (step 28: Caching 03 and FastAPI 01).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_

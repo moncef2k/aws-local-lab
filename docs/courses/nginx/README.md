@@ -16,7 +16,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 | 05 | [Timeouts, retries and passive health checks](./05-timeouts-retries-failover.md) | ✅ written | Lab 02, step 6 |
 | 06 | Static files and caching headers | ⬜ planned | Lab 08, step 26 |
 | 07 | HTTPS in Nginx | ⬜ planned | Lab 08, step 28 |
-| 08 | Logs and debugging | ⬜ planned | Lab 02, step 4 |
+| 08 | [Logs and debugging](./08-logs-and-debugging.md) | ✅ written | Lab 02, step 4 |
 
 The order of the numbers is the suggested reading order. The order in which modules are written follows
 [`COURSES-PLAN.md`](../../COURSES-PLAN.md) (modules 06 and 07 wait for Lab 08).
