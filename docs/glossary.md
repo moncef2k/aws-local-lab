@@ -21,6 +21,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Cache invalidation** | Removing or refreshing a cached copy because the original changed. In cache-aside the application deletes the cached copy right after it writes to the database. | Local: `forget()` in `api/main.py` | 05 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
 | **Cache-Control** | A response header that tells browsers and CDNs how long a copy may be kept: `no-cache` (keep it, but ask before reuse), `no-store` (never keep), `max-age=N`, `immutable`. | AWS: S3 object metadata or a CloudFront response headers policy · Local: set by `lb/nginx.conf` | 08 |
+| **Cardinality** | The number of different series a metric creates (one per combination of label values). A label with unbounded values (a raw URL, a user id) makes it explode and can crash the monitoring system. | Local: the `path` label holds the route template, never the real URL | 09 |
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
 | **Certificate (TLS)** | A signed public document that says which public key belongs to which name (here `localhost`); the matching private key stays secret on the server (`certs/localhost.key`, never committed). | AWS: ACM · Local: `certs/localhost.pem` | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
@@ -29,6 +30,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Connection pool** | A set of already-open database connections that the app reuses, because opening a connection is slow. SQLAlchemy's engine owns one. | Local: SQLAlchemy engine (AWS: RDS Proxy pools connections for many apps) | 04 |
 | **Container** | A running, isolated process with its own filesystem, started from an image. Lighter than a virtual machine. | AWS: ECS / EKS tasks · Local: Docker | 01 |
 | **CORS** (cross-origin resource sharing) | Browser rule: a page from one address may call an API on **another** address only if that API says so in response headers. When the page and the API share one address (as in this lab) no CORS setup is needed. | AWS: CORS settings of S3 / API Gateway · Local: not needed, one origin | 08 |
+| **Counter (metric)** | A number that only goes up (and restarts at 0 with the process); you read it as a rate, e.g. requests per second. | AWS: a CloudWatch count metric (`RequestCount`) · Local: `http_requests_total` | 09 |
 | **CRUD** | Create, Read, Update, Delete: the four basic things you can do with stored records. In an HTTP API they map to `POST`, `GET`, `PUT`, `DELETE`. | Local: the `/notes` routes of the API | 04 |
 | **Dead-letter queue (DLQ)** | A second queue that receives the messages that failed too many times, so one bad message does not loop forever and can be inspected. | AWS: SQS DLQ + `maxReceiveCount` · Local: not simulated | 07 |
 | **Defence in depth** | Several layers of protection, so that getting through one (say, a bug in the API) does not give access to everything (say, the database). | AWS: public/private subnets + security groups · Local: `public` and `private` networks | 03 |
@@ -45,8 +47,10 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Eviction (LRU)** | What a full cache does to make room: it deletes entries. **LRU** (least recently used) deletes the ones unused the longest. | AWS: ElastiCache parameter `maxmemory-policy` · Local: `--maxmemory-policy allkeys-lru` | 05 |
 | **Failover** | Continuing to serve requests, on the remaining copies, when one copy fails. | AWS: ALB + several targets · Local: Nginx `proxy_next_upstream` | 02 |
 | **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
+| **Gauge (metric)** | A number that goes up and down: memory in use, requests in progress, queue length. | AWS: a CloudWatch metric such as `CPUUtilization` | 09 |
 | **Graceful degradation** | Designing a system so that when an optional part fails it gets slower or simpler instead of failing completely. Here: with Redis down the API answers from the database and marks the reply `X-Cache: BYPASS`. | Local: `read_note` in `api/main.py` | 05 |
 | **Health check** | A regular request ("are you OK?") that tells a load balancer or orchestrator whether a copy of an app is healthy. | AWS: target group health check · Local: Nginx + Docker `healthcheck` | 02 |
+| **Histogram (metric)** | Counts observations in buckets ("how many took under 5 ms, 10 ms..."), so percentiles such as p95 can be computed. Has `_bucket`, `_count` and `_sum` series. | AWS: CloudWatch percentile statistics (`p95`) · Local: `http_request_duration_seconds` | 09 |
 | **HPA** (Horizontal Pod Autoscaler) | Kubernetes object that changes the number of pod copies based on CPU or other metrics. | AWS: Auto Scaling | 12 |
 | **Host header** | The HTTP header that carries the name the client typed in the URL (`Host: s3.localhost:8088`). A server or proxy with several sites uses it to choose one, and a presigned URL's signature covers it. | Local: Nginx `server_name`, `proxy_set_header Host $http_host` | 06 |
 | **`.gitkeep`** | An empty file whose only purpose is to make Git keep an otherwise empty folder. | Git convention | 00 |
@@ -56,6 +60,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Image** | A read-only package (app + dependencies) from which containers start. | AWS: ECR stores them · Local: built by Docker | 01 |
 | **Internal network** | A Docker network with no gateway: containers on it can talk to each other and to nothing outside. | AWS: private subnet without a NAT Gateway · Local: `internal: true` | 03 |
 | **Internet Gateway / NAT Gateway** | Internet Gateway: the door between a VPC and the internet, in both directions (public subnets). NAT Gateway: lets machines in private subnets start connections *out*, without letting the internet start connections *in*. | AWS only (the closest local thing is a network with a gateway) | 03 |
+| **Label (metric)** | A name=value pair that splits one metric into several series (`path="/health"`, `status="200"`). | AWS: CloudWatch **dimensions** | 09 |
 | **Layer (image)** | One Dockerfile instruction, stored as a cached piece of the image. Put rarely-changing steps first so rebuilds are fast. | Docker concept | 01 |
 | **k3d** | Runs a small Kubernetes cluster (k3s) inside Docker containers. | Local stand-in for EKS | 11 |
 | **k6** | A load-testing tool: simulates many users and reports latency and errors. | Local tool | 10 |
@@ -63,6 +68,8 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Load balancer** | See ALB. | | 02 |
 | **Make / Makefile** | A tool that runs named recipes (`make up`) defined in a `Makefile`. Used here as a shortcut for long Docker commands. | Local tool | 00 |
 | **Mermaid** | Text syntax for diagrams, rendered by GitHub and many editors. Used for all diagrams here. | Documentation tool | 00 |
+| **Metric** | A number measured over time (requests per second, CPU %). Small and cheap, good for graphs and alerts; logs hold the details of single events. | AWS: CloudWatch Metrics · Local: Prometheus | 09 |
+| **Middleware** | A function that wraps every request of a web app: code before and after the handler runs. Used here to count and time requests. | Local: `record_metrics` in `api/main.py` | 09 |
 | **Migration** | A small numbered script that changes the structure of a database (create a table, add a column). Applied in order, once each, so every copy of the database ends up the same. | Local: Alembic · AWS: run as a task or pipeline step before deployment | 04 |
 | **Name-based routing** | One address and port serving several sites: the proxy reads the `Host` header and picks the matching `server` block. The unmatched requests go to the `default_server`. | AWS: ALB listener rules on the host header · Local: Nginx `server_name` + `default_server` | 06 |
 | **Nginx** | A web server and reverse proxy. Used as load balancer and as static file server. | Local stand-in for ALB / CloudFront origin | 02 |
@@ -80,6 +87,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Producer / consumer** | The producer puts messages on a queue (here the API); the consumer, also called a worker, takes them off and does the work. | AWS: an app calling `SendMessage` / a worker calling `ReceiveMessage` · Local: `api` / `worker` | 07 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
+| **Pull vs push monitoring** | Push: the app sends its numbers to a collector. Pull: a server reads them from the app at an address (`/metrics`) every few seconds; a target that does not answer is noticed. | AWS: CloudWatch agents push · Local: Prometheus pulls | 09 |
 | **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
 | **Queue (message queue)** | An ordered line of messages: first in, first out. It separates asking for work from doing it, absorbs spikes and lets producer and consumer fail and scale independently. | AWS: SQS · Local: a Redis list (`queue:jobs`) | 07 |
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |

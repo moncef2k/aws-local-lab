@@ -35,7 +35,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [06](./06-object-storage.md) | Object storage and presigned URLs | S3 | ✅ done |
 | [07](./07-queues-workers.md) | Queues and workers | SQS, Lambda / ECS workers | ✅ done |
 | [08](./08-frontend-cdn.md) | Static frontend, caching headers and local HTTPS | S3 static hosting, CloudFront, ACM | ✅ done |
-| 09 | Monitoring and logs | CloudWatch | ⬜ planned |
+| [09](./09-monitoring.md) | Monitoring and logs | CloudWatch | 🚧 in progress |
 | 10 | Testing an architecture, failure tests, load tests | — (k6) | ⬜ planned |
 | 11 | Kubernetes | EKS | ⬜ planned |
 | 12 | Autoscaling | Auto Scaling (HPA) | ⬜ planned |
