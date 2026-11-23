@@ -23,6 +23,8 @@
 | **TTL** | *Time to live*: the number of seconds before a key deletes itself. `-1` means "no expiry", `-2` "no such key". |
 | **`nil`** | Redis's answer for "nothing here" (shown as `(nil)` below). |
 | **`SCAN`** | A command that walks the keys **a little at a time**, so it never blocks the server (unlike `KEYS *`). |
+| **`WRONGTYPE`** | The error Redis answers when you use a command of one type on a key of another (for example a list command on a string). Nothing is changed. |
+| **`LPUSH`, `BLMOVE`, `LREM`** | List commands used by the lab's queue: `LPUSH` adds at the head; `BLMOVE` takes an item from one list and puts it on another (waiting if the first is empty); `LREM` removes an item. |
 
 ## The idea
 **Analogy.** A **labelled filing cabinet**. Every drawer has a **label** (the key) and holds one thing, but the things come in different **shapes**: a sticky note with a single line (a **string**), a queue of tickets in order (a **list**), an index card with named boxes "type: thumbnail, status: done" (a **hash**), a bag of tokens with no doubles (a **set**), a ranking board where each name has a score (a **sorted set**). You must handle each drawer with the right tools: you cannot "take the next ticket" from a sticky note.
@@ -59,8 +61,7 @@ docker run -d --rm --name redis-demo redis:8.10.3-alpine3.23 >/dev/null
 until docker exec redis-demo redis-cli ping 2>/dev/null | grep -q PONG; do sleep 0.5; done
 # r COMMAND...: run one redis-cli command and print "> command  ->  answer" on one line
 r() {
-  out=$(docker exec redis-demo redis-cli "$@" | tr '
-' ' ' | sed 's/ *$//')
+  out=$(docker exec redis-demo redis-cli "$@" | tr '\n' ' ' | sed 's/ *$//')
   echo "> $*  ->  ${out:-(nil)}"
 }
 
@@ -132,7 +133,7 @@ docker stop redis-demo >/dev/null
 | `lpush greeting x` | A list command on a **string** key: refused with `WRONGTYPE`. | |
 | `scan 0 match 'job:*'` | Walks the keys in small steps; the answer is the next cursor (`0` = finished) and the matching keys. | `KEYS *` returns everything at once and **blocks** Redis while it does. |
 
-The same types in the lab itself, `lab_keys.sh`: it creates a note and reads it (the API caches it), stops the worker so a job stays in the queue, and asks the lab's Redis what it holds, then cleans up. `r` is the same helper, run inside the lab's `redis` container, with the password taken from the container's own environment (never typed or printed):
+The same types in the lab itself, `lab_keys.sh` (change the `cd` line to **your own project folder**): it creates a note and reads it (the API caches it), stops the worker so a job stays in the queue, and asks the lab's Redis what it holds, then cleans up. `r` is the same helper, run inside the lab's `redis` container, with the password taken from the container's own environment (never typed or printed):
 ```bash
 #!/usr/bin/env bash
 # The lab's own Redis keys: a cached note (string), a job record (hash) and the queue (list).
@@ -179,8 +180,10 @@ r del job:$JID > /dev/null
 | `docker exec redis-demo redis-cli ...` | Run `redis-cli` **inside** the demo container, where it reaches the server on its own `localhost`. |
 | `docker compose exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli "$@"' sh ARGS` | The same inside the lab's `redis` service, which needs a password: the shell reads it from the container's own variable `REDIS_PASSWORD` and gives it to `redis-cli` through `REDISCLI_AUTH`. `-T` = no terminal. |
 | `TYPE key` | Print the type of a key (`string`, `list`, `hash`, `set`, `zset`, or `none`). |
-| `EX n`, `NX` (options of `SET`) | Expire after n seconds; write only if the key does not exist. |
 | `tr '\n' ' '`, `sed 's/ *$//'` | Shell: replace line breaks by spaces; trim the spaces at the end of the line. |
+| `sed -n 's/.*\"id\":\([0-9]*\).*/\1/p'` | Pull the number after `\"id\":` out of the JSON answer: `-n` prints nothing by itself, the `p` at the end prints only the line where the replacement happened, and `\1` is what the parentheses matched. |
+| `until CMD; do sleep 0.5; done` | Repeat `sleep 0.5` **until** the command succeeds: waits for Redis to answer `PONG` before the first test. |
+| `curl -o /dev/null` | Make the request but throw the answer away (the request is the point: it fills the cache, or deletes the note). |
 | `docker compose stop worker` / `start worker` | Pause and resume the lab's worker, so a job stays in the queue long enough to look at. |
 | `curl -s -X POST URL -H 'Content-Type: application/json' -d '...'` | Create something through the API (a note, a job); `-s` quiet, `-X` the method, `-H` a header, `-d` the body. |
 | `MSYS_NO_PATHCONV=1` | Git Bash on Windows: stop it from rewriting arguments that start with `/`. |
