@@ -93,7 +93,7 @@ exec redis-server \
 | `docker exec N redis-cli ...` | Run `redis-cli` inside container `N`. |
 
 ## Hands-on
-Three throw-away Redis servers (image `redis:8.10.3-alpine3.23`, the one of the lab) with a **2 MB** ceiling, so that a few thousand 1 KB keys are enough to fill them. Each server gets two marker keys, `hot` and `cold`, and then rounds of new keys; the script reads `hot` at every round and never touches `cold`. Save it as `run.sh` anywhere:
+Three throw-away Redis servers (image `redis:8.10.3-alpine3.23`, the one of the lab) with a **2 MB** ceiling, so that a few hundred 1 KB keys are enough to fill them. Each server gets two marker keys, `hot` and `cold`, and then rounds of new keys; the script reads `hot` at every round and never touches `cold`. Save it as `run.sh` anywhere:
 
 ```bash
 #!/usr/bin/env bash
@@ -147,8 +147,8 @@ run_policy allkeys-lru  45 40
 | `redis-cli --no-raw eval "..." 0 "$i" "$per"` | Runs the Lua script in Redis: add `$per` keys of 1024 characters each, named `k:<round>:<n>`. `redis.pcall` returns an error instead of aborting, so the script can report `OOM`. | Without `pcall`, the first refused write would stop the script with a long error. |
 | `docker exec "$c" redis-cli get hot` | Uses the `hot` key (it becomes "recently used"). | Remove it: `hot` ages like every other key. |
 | `sleep 1.1` | Redis's LRU clock ticks once a second; without a pause, all keys of the run look equally young. | Remove it: the run is faster but LRU cannot tell keys apart, `hot` may be evicted too. |
-| `--maxmemory 2mb` | A tiny ceiling for the demo. About 1 MB of it is Redis's own overhead, so about 1000 keys of 1 KB fit. | The lab uses 64mb. |
-| `run_policy allkeys-lru 45 40` | 45 rounds of 40 keys: slow enough (≈ 1 MB per 25 rounds) that eviction removes the oldest keys one batch at a time. | Rounds of 500 keys are a bad demo, see "What if…?". |
+| `--maxmemory 2mb` | A tiny ceiling for the demo. Redis's own overhead and the per-key bookkeeping use a large part of it: in these runs only about 400 keys of 1 KB stay (402 and 400 in the outputs). | The lab uses 64mb. |
+| `run_policy allkeys-lru 45 40` | 45 rounds of 40 keys: each round is a tenth of what fits, so eviction removes the oldest keys a little at a time. | Rounds of 500 keys are a bad demo, see "What if…?". |
 
 Run it (about two minutes; the `round ok` lines are left out here):
 
@@ -187,7 +187,7 @@ bash run.sh
 **How to read it:**
 - **`noeviction`:** round 1 (not shown) fit, round 2 hit the ceiling and every write after it was refused: `OOM command not allowed`. 502 keys are all there is: the 500 of round 1 plus `hot` and `cold`. Nothing was evicted (`evicted_keys: 0`), and `used_memory_human` is a little over the 2 MB ceiling: Redis checks the memory when a command (here a whole script of 500 writes) **starts**, so a command admitted just under the ceiling may end slightly over it.
 - **`volatile-lru`:** the same, and for a reason worth remembering: **no key had a TTL**, so there was nothing Redis was *allowed* to evict. A cache using `volatile-lru` must put a TTL on everything it stores, or it silently behaves like `noeviction`.
-- **`allkeys-lru`:** all 45 rounds were accepted (no error), but only **402 keys** remain and `evicted_keys` counts **1438** thrown away. The key we kept using (`hot`) survived, and the one we never touched (`cold`) was evicted: least recently used goes first. Memory stays at the ceiling (`2.00M`). (The counts do not add up exactly: 1800 keys written + 2 markers − 1438 evicted = 364, not 402. The same 38-key gap appeared in the run of the next section, 4002 − 3640 = 362 against 400 left. I did not investigate it; do not rely on `evicted_keys` for exact bookkeeping, only for its trend.)
+- **`allkeys-lru`:** all 45 rounds were accepted (no error), but only **402 keys** remain and `evicted_keys` counts **1438** thrown away. The key we kept using (`hot`) survived, and the one we never touched (`cold`) was evicted: least recently used goes first. Memory stays at the ceiling (`2.00M`). (The counts do not add up exactly: 1800 keys written + 2 markers − 1438 evicted = 364, not 402. The same 38-key gap appeared in the run of the next section, 4002 − 3640 = 362 against 400 left. It is an unexplained discrepancy, which I did not investigate; do not rely on `evicted_keys` for exact bookkeeping, only for its trend.)
 
 Now the lab's own Redis (from the project folder; the password comes from the container's environment, so it is not typed here):
 
@@ -214,7 +214,7 @@ evicted_keys:0
 (Each `CONFIG GET` prints the name, then the value; the first `grep` keeps three lines of `INFO memory`, the second two of `INFO stats`.) The lab's cache uses 1.16 MB of its 64 MB ceiling, with the policy `allkeys-lru`, and has evicted **nothing** yet: with a handful of notes the ceiling is far away. You would only see `evicted_keys` rise with millions of cached keys, or after lowering `maxmemory`.
 
 ## What if…?
-**…the rounds are big?** The first time I ran the `allkeys-lru` experiment with `run_policy allkeys-lru 8 500` (8 rounds of 500 keys, about 0.5 MB each, a big part of the ~1 MB that fits), the result was:
+**…the rounds are big?** The first time I ran the `allkeys-lru` experiment with `run_policy allkeys-lru 8 500` (8 rounds of 500 keys, about 0.5 MB each: **more than everything that fits**, about 400 keys), the result was:
 
 ```text
 === policy: allkeys-lru (maxmemory 2mb)
@@ -224,7 +224,7 @@ evicted_keys:0
   evicted_keys       : 3640
   used_memory_human  : 2.00M
 ```
-Even the key we kept using, `hot`, was evicted. Why: the eviction runs once at the start of each big write and must free about half a megabyte at once, so it digs deeper than the keys of the last second, and `hot`, used within the same second as the newest keys, is no younger than they are (**one-second clock**). LRU protects a key that is *clearly* more recent than the ones evicted, not one that ties with them. The lesson for real systems: a cache that is far too small for its working set (here, one write is half the cache) evicts *useful* keys, and the hit rate collapses. Size `maxmemory` so that the keys in use fit with room to spare, and watch `evicted_keys`: if it climbs fast while your hit rate falls, the cache is too small.
+Even the key we kept using, `hot`, was evicted. Why: the eviction runs when a big write starts and must make room for 500 new keys at once, which is more than the whole cache holds, so it removes **every older key**, and `hot`, used within the same second as the newest keys, is no younger than they are (**one-second clock**). LRU protects a key that is *clearly* more recent than the ones evicted, not one that ties with them. The lesson for real systems: a cache that is far too small for its working set (here, one write is half the cache) evicts *useful* keys, and the hit rate collapses. Size `maxmemory` so that the keys in use fit with room to spare, and watch `evicted_keys`: if it climbs fast while your hit rate falls, the cache is too small.
 
 ## In short
 1. A cache needs a **memory ceiling** (`maxmemory`) and a rule for what to throw away at the ceiling (`maxmemory-policy`); the Redis default, `noeviction`, refuses writes instead, which is right for a queue and wrong for a cache.
