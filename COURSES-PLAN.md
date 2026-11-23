@@ -132,7 +132,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 03 | Path, query and body parameters | `03-parameters.md` | step 12 (Lab 04) | step 19 | AWSLAB-102 | `/notes/{id}`, `POST /notes` body |
 | 04 | Pydantic models and validation | `04-pydantic.md` | step 12 (Lab 04) | step 20 | AWSLAB-104 | Note request/response schemas |
 | 05 | Automatic OpenAPI docs | `05-openapi-docs.md` | step 2 (Lab 01) | step 30 | AWSLAB-125 | `/docs` and `/openapi.json` come for free |
-| 06 | `async def` vs `def` | `06-async.md` | step 2 (Lab 01) | step 31 | - | Handlers in step 2; matters for DB, Redis, boto3 later |
+| 06 | `async def` vs `def` | `06-async.md` | step 2 (Lab 01) | step 31 | AWSLAB-127 | Handlers in step 2; matters for DB, Redis, boto3 later |
 | 07 | Dependencies and dependency injection | `07-dependencies.md` | step 11 (Lab 04) | step 16 | AWSLAB-96 | DB session per request |
 | 08 | Testing with TestClient | `08-testing.md` | step 12 (Lab 04) | on request | - | The labs test with shell scripts; this adds pytest-style tests |
 

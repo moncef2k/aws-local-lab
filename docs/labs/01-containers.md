@@ -362,6 +362,7 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 - Course: [FastAPI 01 - How a Python web API works, and routes](../courses/fastapi/01-how-a-web-api-works.md)
 - Course: [FastAPI 02 - Uvicorn and ASGI](../courses/fastapi/02-uvicorn-and-asgi.md)
 - Course: [FastAPI 05 - Automatic OpenAPI docs](../courses/fastapi/05-openapi-docs.md)
+- Course: [FastAPI 06 - async def vs def](../courses/fastapi/06-async.md)
 - Course: [Networking 01 - IP addresses, ports, localhost and TCP](../courses/networking/01-ip-ports-tcp.md)
 - Course: [Networking 03 - HTTP requests, responses and status codes](../courses/networking/03-http.md)
 - Course: [Networking 05 - NAT and port forwarding](../courses/networking/05-nat-and-port-forwarding.md)

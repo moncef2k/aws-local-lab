@@ -14,7 +14,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 | 03 | [Path, query and body parameters](./03-parameters.md) | ✅ written | Lab 04, step 12 |
 | 04 | [Pydantic models and validation](./04-pydantic.md) | ✅ written | Lab 04, step 12 |
 | 05 | [Automatic OpenAPI docs](./05-openapi-docs.md) | ✅ written | Lab 01, step 2 |
-| 06 | `async def` vs `def` | ⬜ planned | Lab 01, step 2 |
+| 06 | [`async def` vs `def`](./06-async.md) | ✅ written | Lab 01, step 2 |
 | 07 | [Dependencies and dependency injection](./07-dependencies.md) | ✅ written | Lab 04, step 11 |
 | 08 | Testing with `TestClient` | on request | Lab 04, step 12 |
 
