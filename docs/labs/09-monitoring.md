@@ -625,7 +625,7 @@ sum by (name) (container_memory_working_set_bytes{container_label_com_docker_com
 ```
 **How to read it:** the first list is CPU in **cores** (0.0291 = about 3 % of one core), averaged over the last minute: the three API replicas are the busiest, as expected after 300 requests spread over them, and the worker, with nothing to do, is at 0.0002. The second list is memory in **MiB**: the API replicas hold about 94–97 MiB each, the object store (`s3`, SeaweedFS) is the heaviest at 166 MiB, Redis the lightest at 4 MiB. (The 1-minute rate also contains the quiet seconds, so it understates the burst.) These are exactly the two panels of step 34.
 
-**Check 4 — what the three metric groups cost.** The same cAdvisor, first with its **defaults** (every container label, every default metric, system services included; a trial run outside Compose), then as configured above (the trial was a `docker run --privileged` of the same image with all its default options):
+**Check 4 — what the options save.** The same cAdvisor, first with its **defaults** (every container label, every default metric, system services included; a trial run outside Compose), then as configured above (the trial was a `docker run --privileged` of the same image with all its default options):
 ```bash
 curl -s http://127.0.0.1:8099/metrics | grep -c '^container_'                         # trial run, defaults
 docker compose exec -T prometheus wget -q -O - http://cadvisor:8080/metrics | grep -c '^container_'   # the lab's service
@@ -634,7 +634,7 @@ docker compose exec -T prometheus wget -q -O - http://cadvisor:8080/metrics | gr
 3740
 1172
 ```
-(`grep -c` counts the matching lines: one line per series. The trial container, published on port 8099 only for this measurement, was removed afterwards.) The restrictions cut the number of series **by two thirds**. Two more checks that the options did what they say:
+(`grep -c` counts the matching lines: one line per series. The trial container, published on port 8099 only for this measurement, was removed afterwards.) The three options together (Docker containers only, three metric groups, two labels) cut the number of series **by about two thirds**; the trial run did not isolate the effect of each one. Two more checks that the options did what they say:
 ```text
 network metric present:
     => 37.0
@@ -679,7 +679,7 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `http://prometheus.localhost:8088/` is not served after `docker compose up -d` | `lb` was not re-created (only its mounted `nginx.conf` changed), so it still runs the old configuration. | `docker compose exec -T lb nginx -s reload`. |
 | `sum(http_requests_total{...})` is larger than the number of requests you sent | Counters count since each replica started, and the tests had already sent traffic. | Use `rate(...)` or `increase(...[5m])` to look at a period, not the raw counter. |
 | `docker pull gcr.io/cadvisor/cadvisor:v0.60.6` → `not found` (also `v0.61.1`) | The official image has moved: recent versions are published on GitHub's registry, while the old Google registry only has older tags (`v0.55.1` exists there, `v0.53.0` does not). Found by testing the tags with `docker manifest inspect`. | Use `ghcr.io/google/cadvisor:v0.60.6`. |
-| `docker run --entrypoint /usr/bin/cadvisor ... -help` fails with `OCI runtime create failed ... unable to start container process` (Git Bash on Windows) | Git Bash rewrites the container path `/usr/bin/cadvisor` into a Windows path. | `export MSYS_NO_PATHCONV=1` first. (cAdvisor's help is also `-help` with one dash, not `--help`.) |
+| `docker run --entrypoint /usr/bin/cadvisor ... -help` fails with `OCI runtime create failed ... unable to start container process` (Git Bash on Windows) | Git Bash rewrites the container path `/usr/bin/cadvisor` into a Windows path. | `export MSYS_NO_PATHCONV=1` first. (cAdvisor's help flag is `-help`; Go programs usually accept `--help` too.) |
 | `container_cpu_usage_seconds_total` returns series of containers that are not part of the lab | cAdvisor sees every container of the Docker Desktop VM, including those of other projects. | Filter on the Compose labels: `{container_label_com_docker_compose_project="aws-local-lab"}`. |
 | `docker compose kill -s HUP prometheus` prints `Killing` / `Killed` | Compose's word for sending a signal. Prometheus keeps running and reloads its configuration (see its log: `Loading configuration file`). | Nothing to fix. `docker compose restart prometheus` also works, but restarts the process. |
 | Prometheus log at the first start: `Error refreshing DNS targets ... could not resolve "api"` | Prometheus started before the `api` replicas were reachable by name. It retries every `refresh_interval` and the targets appear once DNS answers. | Wait a few seconds. Compose could also make Prometheus depend on `api`. |
