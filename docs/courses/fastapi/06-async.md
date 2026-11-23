@@ -22,6 +22,7 @@
 | **I/O** (input/output) | Anything where the program waits for the outside world: network, disk, database. The reason `async` exists: almost all the time of a web request is waiting. |
 | **CPU-bound** | Work that keeps the processor busy (resizing an image, computing a hash). Waiting is not the problem, computing is: `async` does not speed it up. |
 | **Latency** | How long one request takes from sending to answer. |
+| **SQLAlchemy, `redis-py`, `boto3`** | The Python libraries this project uses to talk to Postgres, Redis and S3 (an object store). In their ordinary form they are **blocking**: the program waits inside the call until the server answers. |
 
 ## The idea
 **Everyday analogy.** A café with **one waiter**. A *blocking* waiter takes your order, goes to the kitchen and **stands there** until your dish is ready, serving nobody else: ten customers means ten times the wait. An *async* waiter takes the order, hands it to the kitchen, and **while the dish cooks takes other orders**; when a dish is ready he brings it. One waiter, many customers, because most of the time is *waiting for the kitchen*, not working. But if this waiter ever decides to stand and watch one dish cook (a blocking call inside `async def`), the whole café stops. FastAPI offers a second solution for waiters who must stand and wait (code that cannot be async): it hires **extra waiters** (a thread pool) for them.
@@ -103,6 +104,8 @@ async def wait_async_await():                   # coroutine that waits the right
 | `seq 1 10 \| xargs -P 10 -I{} curl -s -o /dev/null URL` | `seq 1 10` prints the numbers 1 to 10; `xargs` runs the command once per line (`-I{}` is how it is told to), and `-P 10` allows **10 at the same time**: ten requests at nearly the same moment. In your terminal type a plain `|`; the backslash is only how a `|` is written inside a table cell. |
 | `date +%s%N` | The current time as nanoseconds since 1970 (GNU `date`, as in Git Bash). Taken before and after, the difference is the elapsed time. |
 | `$(( (end - start) / 1000000 ))` | Shell arithmetic: nanoseconds to milliseconds. |
+| `printf '...%-22s %3d...' ARGS` | Print a formatted line: `%-22s` is a text padded to 22 characters, `%3d` a whole number in 3 columns, `%5d` in 5. It lines the results up. |
+| `awk '{printf "%d", $1*1000}'` | Read the number `curl` printed (seconds, such as `0.004`), multiply by 1000 and print it as a whole number of milliseconds. |
 | `curl -s -o /dev/null -w '%{time_total}' URL` | Print only the total time of the request, in seconds (`-w` = write-out, `-o /dev/null` throws the body away). |
 | `command & ... wait` | `&` starts a command in the background; `wait` waits for it to finish. Used to keep a slow request running while another one is sent. |
 | `docker run -d --rm --name async-demo -p 127.0.0.1:8791:8000 -v "$D:/demo:ro" -w /demo --user 10001 aws-local-lab-api:0.1.0 uvicorn async_demo:app --host 0.0.0.0 --port 8000` | The throw-away server of [FastAPI 02](./02-uvicorn-and-asgi.md): the project's image, your folder mounted read-only, one Uvicorn process (one event loop). |
