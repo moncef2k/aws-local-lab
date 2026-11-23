@@ -86,6 +86,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Private subnet** | A network area with no direct access from the internet; databases and app servers live here. | AWS: VPC private subnet · Local: Docker network marked `internal` | 03 |
 | **Producer / consumer** | The producer puts messages on a queue (here the API); the consumer, also called a worker, takes them off and does the work. | AWS: an app calling `SendMessage` / a worker calling `ReceiveMessage` · Local: `api` / `worker` | 07 |
 | **Prometheus / Grafana / Loki** | Metrics database / dashboards / log database. | Local stand-ins for CloudWatch | 09 |
+| **PromQL** | Prometheus's query language: `sum(rate(http_requests_total[1m]))` means "requests per second over the last minute, all series added". | AWS: CloudWatch metric math / Logs Insights queries · Local: the Prometheus Graph page | 09 |
 | **Public subnet** | A network area reachable from the internet; only the load balancer lives here. | AWS: VPC public subnet · Local: Docker network `public` | 03 |
 | **Pull vs push monitoring** | Push: the app sends its numbers to a collector. Pull: a server reads them from the app at an address (`/metrics`) every few seconds; a target that does not answer is noticed. | AWS: CloudWatch agents push · Local: Prometheus pulls | 09 |
 | **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
@@ -98,15 +99,18 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Round-robin** | Handing requests to the servers one after the other, in turn. The default way Nginx and an ALB spread load. | AWS: ALB default · Local: Nginx default | 02 |
 | **S3** | AWS object storage (files in buckets). | Local: SeaweedFS | 06 |
 | **S3 endpoint** | The address of the S3 API. SDKs and the AWS CLI use `amazonaws.com` by default; `--endpoint-url` points them at another server. | Local: `http://s3:8333` inside Docker, `http://s3.localhost` from your machine | 06 |
+| **Scrape** | One read of a target's `/metrics` page by Prometheus (every `scrape_interval`). A failed scrape makes the metric `up` equal 0. | AWS: CloudWatch agent collection · Local: `prometheus.yml` | 09 |
 | **SeaweedFS** | An open-source storage system with an S3-compatible API; the lab uses it as the local S3 because MinIO no longer publishes container images. | Local stand-in for S3 | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
 | **Self-signed certificate** | A certificate signed by its own key instead of a certificate authority; browsers refuse it until you choose to trust it (`curl --cacert`, or accept the warning). | Local: made by `make cert` with OpenSSL | 08 |
+| **Service discovery** | Finding the targets automatically instead of listing them by hand. Here one DNS query on the name `api` returns the address of every replica. | AWS: ECS service discovery / Cloud Map · Kubernetes: endpoints · Local: `dns_sd_configs` | 09 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |
 | **Session (database)** | A short conversation with the database inside which changes are staged and then saved with `commit` (or dropped). The API opens one per request and closes it at the end. | Local: SQLAlchemy `Session` | 04 |
 | **SQLAlchemy** | The Python library used for the database layer: engine (connection pool), ORM models, sessions. | Local library (works the same against RDS) | 04 |
 | **SQS** | AWS message queue: a producer puts jobs in, workers take them out. | Local: a Redis list (Phase 1), then SQS on an emulator (Phase 3) | 07 |
 | **Stale** | Out of date: a cached copy that no longer matches the original. A TTL limits how long data can stay stale. | Local: Redis cache with a 60 s TTL | 05 |
 | **Subnet** | A slice of a bigger network range. Machines in the same subnet reach each other directly; what leaves it goes through a gateway. | AWS: VPC subnet (lives in one AZ) · Local: Docker network | 03 |
+| **Target (Prometheus)** | One address that Prometheus scrapes, with its labels (`job`, `instance`) and its health (`up` or `down`). | Local: the 3 API replicas | 09 |
 | **Target group** | The list of servers a load balancer can send traffic to, with their health checks. | AWS: ALB target group · Local: Nginx `upstream` block | 02 |
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
