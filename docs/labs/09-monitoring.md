@@ -403,8 +403,17 @@ Prometheus Server is Healthy.
 
 **Check 2 — querying the numbers (PromQL).** Prometheus has added a label `instance` to every series (the address it scraped) and a metric `up` (1 = the last scrape worked). First 60 requests to `/whoami`, then four questions, asked through the HTTP API (`/api/v1/query`); the same expressions can be typed in the **Graph** page of the web UI:
 ```bash
+P=http://prometheus.localhost:8088
+q() {   # q 'EXPRESSION': ask Prometheus and print one line per series
+  curl -s -G $P/api/v1/query --data-urlencode "query=$1" | python -c "
+import sys, json
+d = json.load(sys.stdin)['data']['result']
+for r in sorted(d, key=lambda r: str(r['metric'])):
+    m = {k: v for k, v in r['metric'].items() if k not in ('__name__', 'job')}
+    print('  ', m if m else '', '=>', r['value'][1])
+if not d: print('   (no result)')"
+}
 for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8088/whoami; done; sleep 7
-# q 'EXPRESSION' sends it to $P/api/v1/query and prints one line per series
 q 'sum(http_requests_total{path="/whoami"})'
 q 'sum by (instance) (http_requests_total{path="/whoami"})'
 q 'sum(rate(http_requests_total[1m]))'
@@ -422,7 +431,7 @@ q 'count(up{job="api"} == 1)'
 4) count(up{job="api"} == 1)   (replicas that answer)
     => 3
 ```
-(`q` is a small shell function around `curl -G --data-urlencode "query=..."` and a few lines of Python to print the result; it is not part of the repository.) **What each one says:**
+(`q` is the small shell function defined at the top of that block: `curl -G --data-urlencode "query=..."` plus a few lines of Python to print the result. It is not part of the repository.) **What each one says:**
 1. **`sum(...)`** adds the series of all replicas: the problem of step 29 (each replica only knows its share) is solved. The total is 170, not 60: the counters count since each replica **started**, and the tests had already sent traffic to them (and restarted some).
 2. **`sum by (instance)`** keeps one line per replica: the shares are uneven (23, 73, 74) for the same reason; I did not trace them one by one. The load balancer's rotation is even, but the replicas were not all started at the same time.
 3. **`rate(...[1m])`** is the **per-second growth** of a counter over the last minute: about 1.4 requests per second (the health checks and Prometheus's own cadence are included). This, not the raw counter, is what dashboards show (step 33).
@@ -450,7 +459,7 @@ q 'up{job="api"}'
    {'instance': '172.22.0.8:8000'} => 1
    {'instance': '172.22.0.9:8000'} => 1
 ```
-(The lines `count(up{job="api"} == 1):` and `== after restart:` are `echo` labels of my script.) The stopped replica's series has `up = 0` and the count of live replicas drops to 2: with **pull**, a target that does not answer is noticed by definition (a program that pushes would just go silent). After the restart all three are `1` again; the replica came back at the **same address** here (`172.22.0.8`), so no new series appeared, but had the address changed the next DNS refresh would have found it.
+(The lines `count(up{job="api"} == 1):` and `== after restart:` are `echo` labels of my script.) I did not check whether Docker's DNS still lists a stopped container: here, 12 s after the stop, the series was still there with value `0`; at a later DNS refresh the target may disappear instead, and its series would then go stale. The stopped replica's series has `up = 0` and the count of live replicas drops to 2: with **pull**, a target that does not answer is noticed by definition (a program that pushes would just go silent). After the restart all three are `1` again; the replica came back at the **same address** here (`172.22.0.8`), so no new series appeared, but had the address changed the next DNS refresh would have found it.
 
 **Regression check — the whole suite:**
 ```bash
