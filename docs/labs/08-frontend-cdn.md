@@ -737,8 +737,11 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 **Check 1 — the step's check: `curl https://localhost:8443/health`** (the port is 8443 here, not 443):
 ```bash
 curl -sS https://localhost:8443/health                                   # trust nobody
-curl -sk https://localhost:8443/health                                   # -k: do not check the certificate at all
-curl -s --cacert certs/localhost.pem -w '\nHTTP %{http_code}, TLS verify result %{ssl_verify_result}\n' https://localhost:8443/health
+curl -sk -w '  HTTP %{http_code}
+' https://localhost:8443/health        # -k: do not check the certificate at all
+curl -s --cacert certs/localhost.pem -w '
+HTTP %{http_code}, TLS verify result %{ssl_verify_result}, HTTP version %{http_version}
+' https://localhost:8443/health
 ```
 ```text
 curl: (60) schannel: SEC_E_UNTRUSTED_ROOT (0x80090325) - The certificate chain was issued by an authority that is not trusted.
@@ -747,7 +750,7 @@ More details here: https://curl.se/docs/sslcerts.html
 {"status":"ok"}
 HTTP 200, TLS verify result 0, HTTP version 1.1
 ```
-(The second command's `HTTP 200` and the third's lines come from `-w`.) Three outcomes for one server: **without trust** `curl` refuses (`curl: (60)`, "not trusted": the certificate is self-signed); with **`-k`** it skips the check (works, but you have lost the authentication: only for experiments); with **`--cacert certs/localhost.pem`** you tell `curl` to trust **that exact certificate**, and it answers `200` with `TLS verify result 0` (= verified). Verified here means "this is the certificate I trusted", which is all a local lab needs.
+(The `HTTP ...` parts of the second and third answers are printed by the `-w` option: `%{http_code}`, `%{ssl_verify_result}` and `%{http_version}` are replaced by the values of that request.) Three outcomes for one server: **without trust** `curl` refuses (`curl: (60)`, "not trusted": the certificate is self-signed); with **`-k`** it skips the check (works, but you have lost the authentication: only for experiments); with **`--cacert certs/localhost.pem`** you tell `curl` to trust **that exact certificate**, and it answers `200` with `TLS verify result 0` (= verified). Verified here means "this is the certificate I trusted", which is all a local lab needs.
 
 **Check 2 — what was negotiated, and the certificate as served** (`openssl s_client` opens a TLS connection and reports; the Windows `curl` of this machine has no HTTP/2 support, so ALPN is read from this tool):
 ```bash
