@@ -1,9 +1,9 @@
 # Lab 08 — Frontend and CDN (S3 static hosting + CloudFront)
 
 > **AWS equivalent:** Amazon S3 static website hosting + Amazon CloudFront (and ACM for HTTPS)  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 07](./07-queues-workers.md)  ·  **Reference solution:** commit `64587b8` (step 26) on `dev`
+> **Builds on:** [Lab 07](./07-queues-workers.md)  ·  **Reference solution:** commits `64587b8` and `f2536a0` (step 26), `9ebb73b` (step 27) on `dev`
 
-> **Status:** in progress. Step 26 is written. Steps 27–28 (caching headers, local HTTPS) and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 26–27 are written. Step 28 (local HTTPS, optional) and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain the difference between **static** and **dynamic** content, and why static files are served by something other than the API.
@@ -71,7 +71,7 @@ The page comes from `frontend`; the calls it makes afterwards go to the **same a
 
 **Do it.** Three files, plus the plan tick.
 
-1. `frontend/index.html`: one page, with its CSS and JavaScript inline (no build step, nothing to install). The JavaScript calls `GET /whoami` 12 times, one after the other, and `GET /health` once; for each answer it adds a line and updates a tally per container id. The whole file:
+1. `frontend/index.html`: one page, with its CSS and JavaScript inline (no build step, nothing to install). This is the file **as it is at the end of this step**; [step 27](#step-27--caching-headers) moves the JavaScript into a separate, hashed file. The JavaScript calls `GET /whoami` 12 times, one after the other, and `GET /health` once; for each answer it adds a line and updates a tally per container id. The whole file:
    ```html
    <!doctype html>
    <html lang="en">
@@ -330,6 +330,303 @@ make test
 - The page makes the load balancing **visible**; this kind of small, honest, in-browser check is what a screenshot in a lab is for.
 - **Not yet:** the page is sent **without caching instructions** (no `Cache-Control`), so a browser may ask for it again each time or guess how long to keep it: step 27 sets the headers properly. And the files are bind-mounted from your folder; in AWS they would be **uploaded** to the bucket as part of a deployment.
 
+### Step 27 — Caching headers
+**Why:** at the end of step 26 the page was served with an `ETag` and a `Last-Modified` date (Nginx adds them for every file) but with **no instruction about how long to keep it**. A browser then **guesses** (usually from the age of the file), which gives surprises: a page that does not update after a deployment, or one that is downloaded again and again. This step tells browsers (and, in AWS, CloudFront) **exactly** what to do, with two rules.
+
+**The theory in five lines.**
+1. A response can be **kept** by the browser, so the next visit does not have to download it again. That is **caching**.
+2. A kept copy is **fresh** for a while (`max-age=N` seconds): during that time the browser uses it **without asking the server anything**.
+3. When a copy is no longer fresh, the browser can **ask whether it changed**: it sends the file's `ETag` back in `If-None-Match`. If nothing changed the server answers **`304 Not Modified`** with **no body**, and the browser keeps its copy. Cheap, but still one round trip.
+4. `Cache-Control: no-cache` does **not** mean "do not store": it means "you may store it, but **ask me every time** before you reuse it". (`no-store` is the one that forbids storing.)
+5. A file whose **name contains a hash of its content** (`app.540efee7.js`) can **never** be out of date: if the content changes, the name changes, and the page loads a **different file**. Such a file can be kept for a year and marked **`immutable`** ("it will not change: do not even ask").
+
+So the rule of this step: the **page** (whose name never changes, and which says which assets to load) is `no-cache`, always revalidated; the **hashed assets** are `public, max-age=31536000, immutable`, never asked about again. A deployment replaces the page and its asset names; visitors get the new version at their next visit, and old assets simply stop being requested.
+
+**Do it.** Three files.
+
+1. Move the JavaScript out of the page into a file whose name carries the **first 8 characters of its SHA-256** (the script here is the one of step 26, de-indented by two spaces). `frontend/assets/app.540efee7.js`:
+   ```javascript
+   const COUNT = 12;      // calls per run
+   const tally = {};      // container id -> number of answers so far
+
+   // A stable colour per name, so the same instance always looks the same.
+   function colour(name) {
+     let h = 0;
+     for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+     return `hsl(${h} 60% 45%)`;
+   }
+
+   async function whoami() {
+     const start = performance.now();
+     const res = await fetch('/whoami', { cache: 'no-store' });   // no-store: never answer from the browser cache
+     const { hostname } = await res.json();
+     return { hostname, ms: Math.round(performance.now() - start) };
+   }
+
+   function showTally() {
+     const total = Object.values(tally).reduce((a, b) => a + b, 0);
+     document.getElementById('tally').replaceChildren(...Object.entries(tally).sort().map(([name, n]) => {
+       const li = document.createElement('li');
+       li.innerHTML = `<span class="name"></span><span class="bar"></span><span>${n}</span>`;
+       li.querySelector('.name').textContent = name;
+       Object.assign(li.querySelector('.bar').style, { background: colour(name), width: `${(n / total) * 14}rem` });
+       return li;
+     }));
+   }
+
+   async function run() {
+     const button = document.getElementById('again');
+     button.disabled = true;
+     for (let i = 1; i <= COUNT; i++) {
+       try {
+         const { hostname, ms } = await whoami();
+         tally[hostname] = (tally[hostname] || 0) + 1;
+         const li = document.createElement('li');
+         li.textContent = `#${i} ${hostname} ${ms} ms`;
+         li.style.borderColor = colour(hostname);
+         document.getElementById('calls').appendChild(li);
+         showTally();
+       } catch (err) {
+         document.getElementById('calls').insertAdjacentHTML('beforeend', `<li class="bad">#${i} failed</li>`);
+       }
+     }
+     button.disabled = false;
+   }
+
+   async function health() {
+     const el = document.getElementById('health');
+     try {
+       const res = await fetch('/health', { cache: 'no-store' });
+       el.textContent = `GET /health: HTTP ${res.status} ${JSON.stringify(await res.json())}`;
+       el.className = res.ok ? 'ok' : 'bad';
+     } catch (err) {
+       el.textContent = 'GET /health failed';
+       el.className = 'bad';
+     }
+   }
+
+   document.getElementById('again').addEventListener('click', run);
+   health();
+   run();
+   ```
+   The name is computed from the content (run it again whenever the script changes, and rename the file):
+   ```bash
+   sha256sum frontend/assets/app.540efee7.js | cut -c1-8
+   ```
+   ```text
+   540efee7
+   ```
+
+2. `frontend/index.html` loads it (the `<script>` block of step 26 becomes one line; the CSS stays inline). The whole file:
+   ```html
+   <!doctype html>
+   <html lang="en">
+   <head>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <title>AWS local lab</title>
+     <style>
+       :root { --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5b6475; --line: #dde1e8; --ok: #1a7f37; --bad: #cf222e; }
+       @media (prefers-color-scheme: dark) {
+         :root { --bg: #14171f; --card: #1d222d; --text: #e8ebf2; --muted: #9aa3b5; --line: #2e3544; --ok: #3fb950; --bad: #ff7b72; }
+       }
+       body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+       main { max-width: 44rem; margin: 0 auto; padding: 2rem 1rem; }
+       h1 { margin: 0 0 .25rem; }
+       h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+       .sub { color: var(--muted); margin: 0 0 1.5rem; }
+       section { background: var(--card); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+       button { font: inherit; padding: .4rem .9rem; border-radius: .4rem; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+       button:disabled { opacity: .5; cursor: progress; }
+       code { background: var(--bg); padding: .05rem .3rem; border-radius: .25rem; }
+       ul, ol { padding-left: 0; list-style: none; margin: .75rem 0 0; }
+       #tally li { display: flex; align-items: center; gap: .6rem; margin: .25rem 0; }
+       #tally .name { width: 8.5rem; font-family: ui-monospace, monospace; }
+       #tally .bar { height: .9rem; border-radius: .2rem; min-width: .5rem; }
+       #calls { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .35rem; }
+       #calls li { font-family: ui-monospace, monospace; font-size: .85rem; border-left: .35rem solid; padding-left: .5rem; }
+       .ok { color: var(--ok); } .bad { color: var(--bad); }
+     </style>
+   </head>
+   <body>
+   <main>
+     <h1>AWS local lab</h1>
+     <p class="sub">A static page served by its own Nginx container, calling the API through the load balancer.</p>
+
+     <section>
+       <h2>Which API instance answers?</h2>
+       <p>Every call to <code>/whoami</code> goes through the load balancer to one of the API replicas.
+          The name is the container id. Reload the page: the order changes.</p>
+       <button id="again" type="button">Call 12 more times</button>
+       <ul id="tally" aria-live="polite"></ul>
+       <ol id="calls"></ol>
+     </section>
+
+     <section>
+       <h2>API health</h2>
+       <p id="health">checking…</p>
+     </section>
+   </main>
+
+   <script src="/assets/app.540efee7.js"></script>
+   </body>
+   </html>
+   ```
+
+3. The headers, in `lb/nginx.conf` (the `location = /` of step 26 gains one line, and a new `location /assets/`):
+   ```nginx
+           # The page itself: only the exact path "/" goes to the frontend. Every other path (/health,
+           # /whoami, /notes, /upload, /jobs ...) is still the API, so existing clients do not change.
+           # "no-cache" does not mean "do not store": it means "ask me every time before you reuse it".
+           # The ETag makes that cheap: the answer is a short "304 Not Modified" while the page is unchanged.
+           location = / {
+               proxy_pass http://frontend;
+               proxy_set_header Host $host;
+               add_header Cache-Control "no-cache";
+           }
+
+           # Files whose name contains a hash of their content (app.540efee7.js): when the content changes,
+           # the name changes too, so a copy can be kept for a year (31536000 s) and never needs checking.
+           # No "always": an error answer (a mistyped name) must not be cached for a year.
+           location /assets/ {
+               proxy_pass http://frontend;
+               proxy_set_header Host $host;
+               add_header Cache-Control "public, max-age=31536000, immutable";
+           }
+   ```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `app.540efee7.js` | The first 8 hexadecimal characters of the file's SHA-256: a **content hash** in the name ("cache busting"). | A fixed name such as `app.js` could not be kept for a year: after a change, visitors would keep running the old script. |
+| `<script src="/assets/app.540efee7.js">` | The page names the exact file to load. When the script changes, **this line** changes too, and the page is revalidated every time (next row), so visitors see the new name at once. | |
+| `add_header Cache-Control "no-cache";` on `location = /` | The page may be stored but must be **revalidated** before each reuse. The `ETag` of the file makes this a `304` while the page is unchanged. | With no header the browser decides by itself: a stale page after a deployment is the classic result. |
+| `location /assets/ { proxy_pass http://frontend; ... }` | Sends the asset paths to the frontend container, like `/` (the path is passed on unchanged). | Without it `/assets/...` would go to the API and answer `404`. |
+| `add_header Cache-Control "public, max-age=31536000, immutable";` | `public`: any cache (browser, CDN) may keep it. `max-age=31536000`: fresh for one year (31,536,000 seconds). `immutable`: do not revalidate during that time, even on a reload. | A short `max-age` would make browsers ask again and again for a file that never changes. |
+| no `always` on that `add_header` | By default `add_header` only applies to successful answers (200, 204, 206, 301, 302, 303, 304, 307, 308). A `404` for a mistyped name does **not** get the one-year header (Check 3). | With `always`, a `404` could be kept by a browser or CDN for a year. |
+
+**Apply it:**
+```bash
+docker compose exec -T lb nginx -t
+docker compose exec -T lb nginx -s reload
+```
+```text
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/11/23 09:19:38 [notice] 1225#1225: signal process started
+```
+(The `frontend` files are bind-mounted: the new `assets/` folder is served at once; only the load balancer's configuration needs the reload, as in step 26.)
+
+**Check 1 — the headers (`curl -I` asks for the headers only).**
+```bash
+export MSYS_NO_PATHCONV=1
+curl -s -I http://127.0.0.1:8088/ | grep -iE '^(HTTP|cache-control|etag|last-modified)'
+curl -s -I http://127.0.0.1:8088/assets/app.540efee7.js | grep -iE '^(HTTP|content-type|cache-control|etag|last-modified)'
+```
+```text
+HTTP/1.1 200 OK
+Last-Modified: Mon, 23 Nov 2026 09:19:24 GMT
+ETag: "6b04051c-9df"
+Cache-Control: no-cache
+HTTP/1.1 200 OK
+Content-Type: application/javascript
+Last-Modified: Mon, 23 Nov 2026 09:19:24 GMT
+ETag: "6b04051c-89d"
+Cache-Control: public, max-age=31536000, immutable
+```
+The page says `no-cache`, the hashed script says `public, max-age=31536000, immutable`. Both carry an `ETag` and a `Last-Modified` date made by the frontend's Nginx from the file (**validators**: ways to ask "has it changed?").
+
+**Check 2 — the step's check: `200`, then `304` with `If-None-Match`.** Ask twice: the second time, send the `ETag` back, as a browser does:
+```bash
+curl -s -D - -o /dev/null http://127.0.0.1:8088/                                   # 1st request
+curl -s -D - -o /dev/null -H 'If-None-Match: "6b04051c-9df"' http://127.0.0.1:8088/   # 2nd request
+```
+```text
+=== /
+--- first request:
+HTTP/1.1 200 OK
+Content-Length: 2527
+ETag: "6b04051c-9df"
+Cache-Control: no-cache
+--- second request with If-None-Match: "6b04051c-9df"
+HTTP/1.1 304 Not Modified
+ETag: "6b04051c-9df"
+Cache-Control: no-cache
+=== /assets/app.540efee7.js
+--- first request:
+HTTP/1.1 200 OK
+Content-Length: 2205
+ETag: "6b04051c-89d"
+Cache-Control: public, max-age=31536000, immutable
+--- second request with If-None-Match: "6b04051c-89d"
+HTTP/1.1 304 Not Modified
+ETag: "6b04051c-89d"
+Cache-Control: public, max-age=31536000, immutable
+=== a stale ETag gets the full file again:
+HTTP/1.1 200 OK
+Content-Length: 2527
+```
+(Both files were checked with the same two commands and the output joined and filtered to the interesting headers; `-D -` prints the response headers, `-o /dev/null` throws the body away.) The first request is `200` with the whole file (`Content-Length: 2527`). The second, carrying the `ETag`, is **`304 Not Modified`**: no body at all. A **stale** `ETag` (`"old-version"`, a version that no longer exists) gets the full file again. The hashed script also answers `304`, but a browser will not even ask: it is fresh for a year.
+
+**Check 3 — an error is not cached for a year.**
+```bash
+curl -s -I http://127.0.0.1:8088/assets/app.nope.js | grep -iE '^(HTTP|cache-control)'
+```
+```text
+HTTP/1.1 404 Not Found
+```
+A mistyped asset name answers `404` and has **no** `Cache-Control` line: the missing `always` kept the one-year header off the error.
+
+**Check 4 — what a real browser does.** Chromium (Playwright, in a pinned container) visited the page **three times** in one session, with its HTTP cache on. For each visit, the script recorded for `/` and the asset whether the browser **asked the server** or used its **own cache**; afterwards the load balancer's access log (only `/` and `/assets/` lines) shows what **really reached the server**:
+```text
+visit 1: / -> asked the server, status 200 | /assets/app.540efee7.js -> asked the server, status 200
+visit 2: / -> asked the server, status 200 | /assets/app.540efee7.js -> from the browser cache (no request)
+visit 3: / -> asked the server, status 200 | /assets/app.540efee7.js -> from the browser cache (no request)
+--- what the load balancer received (only / and /assets/):
+"GET / HTTP/1.1" 200 2527
+"GET /assets/app.540efee7.js HTTP/1.1" 200 2205 "http://host.docker.internal:8088/" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/159.0.8154.6 Safari/537.36"
+"GET / HTTP/1.1" 304 0
+"GET / HTTP/1.1" 304 0
+```
+(The script listened to the Chrome DevTools Protocol events `Network.requestWillBeSent`, `responseReceived` and `requestServedFromCache`; it is a throw-away snippet, not part of the repository. The log lines were cut to the request, status and size.) Read both halves together:
+- **Visit 1:** the browser had nothing: the server got `GET /` and `GET /assets/app.540efee7.js`, both `200`.
+- **Visits 2 and 3:** the **script never reached the server**: it was fresh and `immutable`, so the browser used its copy (no log line at all). The **page** did reach the server each time, as `no-cache` demands, and was answered **`304` with a size of 0**: the browser reused its copy and the transfer was empty. (The script reports the page as `status 200`: after revalidating, Chromium gives the page's scripts the cached response as a `200` (as far as I can tell); the **log** shows the real answer on the wire.)
+
+That is the whole point of the two rules: the part that can change is checked every time at almost no cost, and the part that never changes is not requested at all.
+
+**Check 5 — the page still works.** A screenshot with `scripts/screenshot.sh`, after the split:
+```bash
+bash scripts/screenshot.sh http://localhost:8088/ docs/labs/images/lab-08/step-27-frontend.png 3000
+```
+```text
+saved /out/step-27-frontend.png
+screenshot written to docs/labs/images/lab-08/step-27-frontend.png
+```
+![The frontend after the split: three API containers with four answers each, twelve call lines and a green health line](./images/lab-08/step-27-frontend.png)
+
+Same page, loaded with its script from `/assets/app.540efee7.js`: three containers, four answers each, green health line. (The container ids differ from the screenshot of step 26: the test suite re-created the stack in between.)
+
+**Regression check — the whole suite:**
+```bash
+make test
+```
+```text
+02_failover: all checks passed
+02_load_balancing: all checks passed
+03_network_isolation: all checks passed
+04_persistence: all checks passed
+05_cache: all checks passed
+06_storage: all checks passed
+07_async: all checks passed
+```
+(Lines filtered to the summaries; `make` exited with code 0 on this run. As noted in step 26, `02_failover` is intermittent on this machine and can show its `59 of 60` failure on another run.)
+
+**What just happened:**
+- The frontend now has an explicit **caching policy**: the page is revalidated cheaply on every visit (`no-cache` + `ETag` → `304`), and the hashed script is cached for a year (`immutable`) and **never requested again** by a returning browser (Check 4, from both the browser's and the server's side).
+- **Cache busting by file name** is what makes a long `max-age` safe: a change of content is a change of name, so no visitor can be stuck on an old script. The cost is a rename (and an edit of `index.html`) at each deployment; real projects automate it with a build tool.
+- The headers are added by the **load balancer**, not by the frontend container. In AWS the equivalents are the `Cache-Control` metadata stored on each **S3 object** (the origin says how long a copy may live), or a **CloudFront response headers policy** and cache policy (the edge adds or overrides them). The lab's load balancer plays the CloudFront role here; the browser is the only cache.
+- **Not simulated:** the CDN's own cache. The load balancer does not store anything (every request reaches the frontend container); only the **browser** caches. A real CloudFront would keep copies at its **edge locations** too, following the same `Cache-Control` rules, and would need an **invalidation** to drop a copy before it expires.
+- **Not done:** compression (`gzip`), and other asset types (images, fonts); the CSS is still inline. Nothing in the page is hashed except the script.
+
 ## 5–11. To be completed at the end of Lab 08
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 28). The problems met so far:
 
@@ -340,3 +637,5 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `curl -s -o /dev/null -w '/health %{http_code}\n' URL` prints `C:/Program Files/Git/health 200` (Git Bash on Windows) | Git Bash rewrites strings that start with `/` into Windows paths, including inside `-w`. | `export MSYS_NO_PATHCONV=1` first, or do not start the format string with `/`. |
 | `/index.html` answers `404` JSON | Only the exact path `/` is routed to the frontend; every other path is the API's. | Expected here. To serve more files, add routes (a prefix such as `/assets/`) or serve the frontend on its own host name. |
 | `make test` fails only in `02_failover.sh` with `59 of 60` | The known intermittent failure of Lab 02 (about 1 run in 3 here, with or without this step's route). | Run it again; see Lab 02 Troubleshooting. |
+| After adding the headers, `curl -s -I .../assets/app.nope.js` (a mistyped name) shows no `Cache-Control` | By design: `add_header` without `always` only applies to successful answers, so a `404` is not told to be cached for a year. | Nothing to fix. Add `always` only if you want headers on errors too (not for a long `max-age`). |
+| A script using the DevTools Protocol reports `status 200` for the page on a revisit, but the server log says `304 0` | After revalidating, Chromium hands the page's scripts the cached copy as a `200`; the wire exchange was a `304`. | Trust the server's access log for what really happened on the wire. |
