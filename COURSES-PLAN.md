@@ -357,7 +357,8 @@ back and the plan updated.
 21. [x] Step 25 modules written (AWS 07 and Nginx 04).
 22. [x] Step 26 modules written (Caching 01 and Nginx 05).
 23. [x] Step 27 modules written (Caching 02 and Nginx 08).
-24. [ ] Next modules: see "Schedule by lab step" (step 28: Caching 03 and FastAPI 01).
+24. [x] Step 28 modules written (Caching 03 and FastAPI 01).
+25. [ ] Next modules: see "Schedule by lab step" (step 29).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -404,3 +405,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 26 | Nginx 05 - Timeouts, retries and passive health checks | AWSLAB-117 | `c3c3710` (+ fix `33d9b22`) | PASS WITH NOTES, notes fixed |
 | step 27 | Caching 02 - Redis basics and data types | AWSLAB-118 | `68c94fd` (+ fix `562b864`) | PASS WITH NOTES, notes fixed |
 | step 27 | Nginx 08 - Logs and debugging | AWSLAB-119 | `2adc725` (+ fix `cd76e17`) | PASS WITH NOTES, notes fixed |
+| step 28 | Caching 03 - Eviction and maxmemory | AWSLAB-120 | `e41233a` (+ fix `cbc5a10`) | PASS WITH NOTES, notes fixed |
+| step 28 | FastAPI 01 - How a Python web API works, and routes | AWSLAB-121 | `c48d2fa` | PASS |
