@@ -94,8 +94,10 @@ def get_negative(db, key):                                    # remedy for penet
 |---|---|
 | `SET key value NX EX 5` | Set the key only if it does not exist (`NX`) and make it expire in 5 seconds (`EX`). Answers `OK`, or nothing if the key existed: the building block of a simple lock. |
 | `docker network create pit-net` | A private network just for the experiment, so the Python container can reach Redis by its name. Removed at the end (`docker network rm pit-net`). |
-| `docker run -d --rm --name pit-redis --network pit-net redis:8.10.3-alpine3.23 redis-server --save "" --appendonly no` | A throw-away Redis (the lab's version), no disk, no password (nothing else can reach it). |
-| `docker run --rm --network pit-net -v "$D:/demo:ro" -w /demo --user 10001 aws-local-lab-api:0.1.0 python pitfalls.py` | Run the script in the project's API image (it contains the `redis` Python library), on that network, with your folder mounted read-only. |
+| `docker run -d --rm --name pit-redis --network pit-net redis:8.10.3-alpine3.23 redis-server --save "" --appendonly no` | A throw-away Redis (the lab's version). `-d` runs it in the background, `--rm` deletes the container when it stops, `--name` names it (the script connects to `pit-redis`), `--network` puts it on the experiment's network; `--save ""` and `--appendonly no` switch off disk persistence; no password, because nothing else can reach it. |
+| `docker run --rm --network pit-net -v "$D:/demo:ro" -w /demo --user 10001 aws-local-lab-api:0.1.0 python pitfalls.py` | Run the script in the project's API image (it contains the `redis` Python library) on that network. `-v "$D:/demo:ro"` shows your folder read-only as `/demo`, `-w /demo` starts there, `--user 10001` runs as the image's ordinary user (not root). |
+| `curl -s -D - -o /dev/null URL` | `-D -` prints the response headers on the screen (`-D` = dump headers, `-` = to the output), `-o /dev/null` throws the body away: only the headers are left, `x-cache` among them. |
+| `tr -d '\r'`, `grep -i '^x-cache'`, `sort \| uniq -c` | Delete the carriage returns of HTTP lines; keep the line starting with `x-cache` (`-i` ignores case); count how many times each distinct line appears (`sort` groups equal lines first). |
 | `seq 1 20 \| xargs -P 20 -I{} sh -c "curl ..."` | Run 20 `curl` commands **in parallel** (`-P 20`): 20 requests at nearly the same moment. In your terminal type a plain `|` (the `\|` is only how a `|` is written inside a table cell). |
 
 ## Hands-on
@@ -157,7 +159,31 @@ def get_plain(db, key):
         r.set(f"c:{key}", v, ex=30)
     return v
 
-# get_with_lock and get_negative: exactly as in "The code, line by line" above
+def get_with_lock(db, key):
+    """Only the request that wins the lock rebuilds the copy; the others wait and look again."""
+    while True:
+        v = r.get(f"c:{key}")
+        if v is not None:
+            return v
+        if r.set(f"lock:{key}", "1", nx=True, ex=5):         # NX: only if the lock does not exist yet
+            try:
+                v = db.read(key)
+                if v is not None:
+                    r.set(f"c:{key}", v, ex=30)
+                return v
+            finally:
+                r.delete(f"lock:{key}")
+        time.sleep(0.05)
+
+
+def get_negative(db, key):
+    """Remember 'this key does not exist' for a few seconds (an empty text marks it)."""
+    v = r.get(f"c:{key}")
+    if v is not None:
+        return v or None
+    v = db.read(key)
+    r.set(f"c:{key}", v if v is not None else "", ex=30 if v is not None else 5)
+    return v
 
 
 def run(getter, db, key, n):
@@ -193,7 +219,7 @@ r.delete("c:1")                          #                  ... and deletes the 
 r.set("c:1", seen, ex=30)                # step 3  reader: stores what it read earlier -> v1 (now old)
 print(f"  database holds {db.rows['1']!r}, the cache holds {r.get('c:1')!r}, copy expires in {r.ttl('c:1')} s")
 ```
-(In the real file `get_with_lock` and `get_negative` are written out in full between `get_plain` and `run`: copy them from the previous section. `r.flushall()` empties the throw-away Redis between experiments.) Run it:
+(`r.flushall()` empties the throw-away Redis between experiments; `threading.Thread(...)` starts one line of execution per simulated request, and `join()` waits for all of them.) Run it:
 
 ```bash
 export MSYS_NO_PATHCONV=1                 # Git Bash on Windows
