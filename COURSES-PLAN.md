@@ -402,3 +402,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 25 | Nginx 04 - Upstreams and load-balancing methods | AWSLAB-115 | `6662e2d` (+ fix `d5a3785`) | PASS WITH NOTES, notes fixed |
 | step 26 | Caching 01 - Why cache | AWSLAB-116 | `ceae9ed` (+ fix `f4225dd`) | PASS WITH NOTES, notes fixed |
 | step 26 | Nginx 05 - Timeouts, retries and passive health checks | AWSLAB-117 | `c3c3710` (+ fix `33d9b22`) | PASS WITH NOTES, notes fixed |
+| step 27 | Caching 02 - Redis basics and data types | AWSLAB-118 | `68c94fd` (+ fix `562b864`) | PASS WITH NOTES, notes fixed |
+| step 27 | Nginx 08 - Logs and debugging | AWSLAB-119 | `2adc725` (+ fix `cd76e17`) | PASS WITH NOTES, notes fixed |
