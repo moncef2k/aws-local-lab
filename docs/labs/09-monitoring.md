@@ -1,9 +1,9 @@
 # Lab 09 — Monitoring (CloudWatch)
 
 > **AWS equivalent:** Amazon CloudWatch (metrics, dashboards, logs; alarms are mentioned, not built) — and Amazon Managed Service for Prometheus / Managed Grafana for the tools used here  ·  **Time:** ~3 h  ·  **Difficulty:** ★★★
-> **Builds on:** [Lab 08](./08-frontend-cdn.md)  ·  **Reference solution:** commits `f049902` (step 29), `1f7646f` (step 30) on `dev`
+> **Builds on:** [Lab 08](./08-frontend-cdn.md)  ·  **Reference solution:** commits `f049902` (step 29), `1f7646f` (step 30), `fab29f2` (step 31) on `dev`
 
-> **Status:** in progress. Steps 29–30 are written. Steps 31–35 and the closing sections (5–11) come next.
+> **Status:** in progress. Steps 29–31 are written. Steps 32–35 and the closing sections (5–11) come next.
 
 ## 1. What you will learn
 - Explain the difference between **metrics** (numbers over time) and **logs** (events as text), and what each one is for.
@@ -482,6 +482,191 @@ make test
 - Prometheus is **not reachable from outside directly**: it sits on the private network and the load balancer shows its page under its own host name, the same pattern as `s3.localhost`.
 - **Not done:** no alerting rules (a CloudWatch alarm would be the equivalent), no `/metrics` on the load balancer, Postgres, Redis or the worker (step 31 adds per-container CPU and memory instead), and the history is two days only.
 
+### Step 31 — cAdvisor: CPU and memory per container
+**Why:** step 29 measures what the **application** does (requests, latency, errors). It says nothing about what the **containers** cost: how much CPU, memory and network each one uses. In AWS that is **Container Insights** (for ECS and EKS) or the EC2 metrics `CPUUtilization` and `NetworkIn`. Locally, **cAdvisor** (*Container Advisor*, a Google tool) plays that role: it reads the usage counters that the Linux kernel keeps for every container and publishes them in the same `/metrics` format, so Prometheus can scrape them like the API's.
+
+**The theory in five lines.**
+1. A container is a normal Linux process (or group of processes) with limits. The kernel groups them in a **cgroup** (*control group*) and counts, for each cgroup, the CPU time used, the memory held, the bytes sent and received.
+2. cAdvisor does not measure anything itself: it **reads those counters** from the filesystem (`/sys/fs/cgroup`) and from Docker, and adds the container's name and labels.
+3. Docker Desktop runs all containers in **one small Linux virtual machine**. cAdvisor, as a container in that VM, sees the other containers' cgroups through read-only mounts of the VM's own folders (`/`, `/sys`, `/var/lib/docker`...): "the host" in the compose file below means that VM.
+4. `container_cpu_usage_seconds_total` is a **counter** of CPU seconds consumed since the container started: as for requests, you read it with `rate(...)`: the rate of CPU seconds per second is the **number of cores** being used (0.5 = half a core).
+5. `container_memory_working_set_bytes` is a **gauge**: the memory the container is really holding now (the figure Kubernetes watches for memory pressure).
+
+**Do it.** Two files (plus the plan tick).
+
+1. `docker-compose.yml`: the `cadvisor` service:
+   ```yaml
+     cadvisor:
+       image: ghcr.io/google/cadvisor:v0.60.6
+       command:
+         # Only containers (not every system service), and only the three groups of metrics we use:
+         # fewer series for Prometheus to store.
+         - --docker_only=true
+         - --enable_metrics=cpu,memory,network
+         - --housekeeping_interval=10s
+         # Without this every series would carry ~15 labels copied from the container; keep two.
+         - --store_container_labels=false
+         - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+       volumes:
+         - /:/rootfs:ro
+         - /var/run:/var/run:ro
+         - /sys:/sys:ro
+         - /var/lib/docker/:/var/lib/docker:ro
+         - /dev/disk/:/dev/disk:ro
+       networks:
+         - private
+       healthcheck:
+         test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+         interval: 10s
+         timeout: 3s
+         retries: 3
+         start_period: 10s
+   ```
+   | Line | What it does | If you change or remove it |
+   |---|---|---|
+   | `image: ghcr.io/google/cadvisor:v0.60.6` | Pinned version. cAdvisor's old registry (`gcr.io/cadvisor/cadvisor`) stops at older tags: this version exists only on GitHub's registry (see Troubleshooting). | |
+   | `--docker_only=true` | Report Docker containers only, not every system service of the VM. | Default: several hundred extra series for things that are not your containers. |
+   | `--enable_metrics=cpu,memory,network` | Publish only these three groups. (The default also covers disk I/O, TCP/UDP statistics and more.) | Add `disk` or `diskIO` when you want them. |
+   | `--housekeeping_interval=10s` | Read the counters every 10 s (default 1 s: more CPU for numbers Prometheus reads every 5 s anyway). | |
+   | `--store_container_labels=false` and `--whitelisted_container_labels=...` | Do not copy **all** the container's labels onto every series (about 15 for a Compose container, including host paths and image ids); keep only the Compose **service** and **project** names. | Remove them and every series carries long, mostly useless labels, and the numbers of series and bytes grow. |
+   | `volumes: /:/rootfs:ro`, `/var/run`, `/sys`, `/var/lib/docker/`, `/dev/disk/` (all `:ro`) | Read-only views of the VM, where the kernel counters and Docker's data live. | Without them cAdvisor starts but sees no containers. |
+   | `networks: - private` | Same as Prometheus: private network only, nothing published. | |
+   | `healthcheck` on `/healthz` | cAdvisor's own "alive" URL. | |
+
+2. `monitoring/prometheus/prometheus.yml`: one more job:
+   ```yaml
+     # Per-container CPU, memory and network (cAdvisor). One target: it reports on every container.
+     - job_name: cadvisor
+       static_configs:
+         - targets: ["cadvisor:8080"]
+   ```
+   Unlike the API, cAdvisor is **one** target that reports on **every** container, so a fixed address is enough (no DNS discovery needed).
+
+**Start it and tell Prometheus.** `docker compose up -d --wait cadvisor` starts the new container. Prometheus only reads its configuration file at start and when it receives a **SIGHUP** signal; sending that signal reloads the configuration without losing the stored data:
+```bash
+docker compose up -d --wait cadvisor
+docker compose kill -s HUP prometheus
+```
+```text
+ Container aws-local-lab-cadvisor-1 Started
+ Container aws-local-lab-cadvisor-1 Waiting
+ Container aws-local-lab-cadvisor-1 Healthy
+ Container aws-local-lab-prometheus-1 Killing
+ Container aws-local-lab-prometheus-1 Killed
+```
+(The word "Killing" is only how Compose names *sending a signal*: Prometheus kept running, `docker compose ps` still showed it `Up 19 minutes (healthy)` and its log says `Loading configuration file` then `Completed loading of configuration file`.)
+
+**Check 1 — the step's check: `container_cpu_usage_seconds_total` returns series.** A few seconds later the target list has a fifth entry:
+```text
+  job=api         instance=172.22.0.8:8000    health=up
+  job=api         instance=172.22.0.9:8000    health=up
+  job=api         instance=172.22.0.10:8000   health=up
+  job=cadvisor    instance=cadvisor:8080      health=up
+  job=prometheus  instance=localhost:9090     health=up
+```
+(Same command as in step 30, `curl -s $P/api/v1/targets`. The replica addresses changed since step 30: the replicas were re-created in between, and DNS discovery followed.) Now the query, with the same `q` helper as in step 30 (slightly extended to leave out the labels `job`, `instance` and `id`):
+```text
+1) the step's check: container_cpu_usage_seconds_total returns series (count, then one lab container):
+    => 25.0
+   {'container_label_com_docker_compose_project': 'aws-local-lab', 'container_label_com_docker_compose_service': 'api', 'cpu': 'total', 'image': 'aws-local-lab-api:0.1.0', 'name': 'aws-local-lab-api-1'} => 34.4074
+```
+```promql
+count(container_cpu_usage_seconds_total)
+container_cpu_usage_seconds_total{name="aws-local-lab-api-1"}
+```
+25 series are returned, and `api-1` has used **34.4 CPU seconds** since it started. The labels tell which container it is: `name`, `image`, and the two Compose labels we kept. (`cpu="total"`: the total over all processors.) **Why 25, when the lab has 11 containers?** cAdvisor sees *every* container of the Docker Desktop VM, including those of **other** projects running on the same machine. That is why the next queries filter on `container_label_com_docker_compose_project="aws-local-lab"`.
+
+**Check 2 — one series per lab container.**
+```promql
+count by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_project="aws-local-lab"})
+```
+```text
+   {'container_label_com_docker_compose_service': 'api'} => 3.0
+   {'container_label_com_docker_compose_service': 'cadvisor'} => 1.0
+   {'container_label_com_docker_compose_service': 'frontend'} => 1.0
+   {'container_label_com_docker_compose_service': 'lb'} => 1.0
+   {'container_label_com_docker_compose_service': 'postgres'} => 1.0
+   {'container_label_com_docker_compose_service': 'prometheus'} => 1.0
+   {'container_label_com_docker_compose_service': 'redis'} => 1.0
+   {'container_label_com_docker_compose_service': 's3'} => 1.0
+   {'container_label_com_docker_compose_service': 'worker'} => 1.0
+```
+Nine services, eleven containers (`api` has three): the whole lab, and nothing of the other projects.
+
+**Check 3 — CPU per container under load, and memory.** 300 requests to `/health` through the load balancer, then:
+```promql
+sum by (name) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project="aws-local-lab"}[1m]))
+sum by (name) (container_memory_working_set_bytes{container_label_com_docker_compose_project="aws-local-lab"}) / 1024 / 1024
+```
+```text
+   {'name': 'aws-local-lab-api-1'} => 0.0291
+   {'name': 'aws-local-lab-api-2'} => 0.0324
+   {'name': 'aws-local-lab-api-3'} => 0.0292
+   {'name': 'aws-local-lab-cadvisor-1'} => 0.0096
+   {'name': 'aws-local-lab-frontend-1'} => 0.0023
+   {'name': 'aws-local-lab-lb-1'} => 0.0045
+   {'name': 'aws-local-lab-postgres-1'} => 0.0029
+   {'name': 'aws-local-lab-prometheus-1'} => 0.0063
+   {'name': 'aws-local-lab-redis-1'} => 0.0045
+   {'name': 'aws-local-lab-s3-1'} => 0.0066
+   {'name': 'aws-local-lab-worker-1'} => 0.0002
+
+   {'name': 'aws-local-lab-api-1'} => 96.5586
+   {'name': 'aws-local-lab-api-2'} => 93.8203
+   {'name': 'aws-local-lab-api-3'} => 93.8203
+   {'name': 'aws-local-lab-cadvisor-1'} => 19.8164
+   {'name': 'aws-local-lab-frontend-1'} => 13.5859
+   {'name': 'aws-local-lab-lb-1'} => 14.0938
+   {'name': 'aws-local-lab-postgres-1'} => 29.7773
+   {'name': 'aws-local-lab-prometheus-1'} => 65.7852
+   {'name': 'aws-local-lab-redis-1'} => 3.9375
+   {'name': 'aws-local-lab-s3-1'} => 166.375
+   {'name': 'aws-local-lab-worker-1'} => 50.9766
+```
+**How to read it:** the first list is CPU in **cores** (0.0291 = about 3 % of one core), averaged over the last minute: the three API replicas are the busiest, as expected after 300 requests spread over them, and the worker, with nothing to do, is at 0.0002. The second list is memory in **MiB**: the API replicas hold about 94–97 MiB each, the object store (`s3`, SeaweedFS) is the heaviest at 166 MiB, Redis the lightest at 4 MiB. (The 1-minute rate also contains the quiet seconds, so it understates the burst.) These are exactly the two panels of step 34.
+
+**Check 4 — what the three metric groups cost.** The same cAdvisor, first with its **defaults** (every container label, every default metric, system services included; a trial run outside Compose), then as configured above (the trial was a `docker run --privileged` of the same image with all its default options):
+```bash
+curl -s http://127.0.0.1:8099/metrics | grep -c '^container_'                         # trial run, defaults
+docker compose exec -T prometheus wget -q -O - http://cadvisor:8080/metrics | grep -c '^container_'   # the lab's service
+```
+```text
+3740
+1172
+```
+(`grep -c` counts the matching lines: one line per series. The trial container, published on port 8099 only for this measurement, was removed afterwards.) The restrictions cut the number of series **by two thirds**. Two more checks that the options did what they say:
+```text
+network metric present:
+    => 37.0
+disk metrics (disabled) present:
+   (no result)
+```
+`container_network_receive_bytes_total` exists (37 series), and `container_fs_usage_bytes`, a *disk* metric we did not enable, returns nothing. A raw sample of what Prometheus reads for Redis (`name` kept, other labels cut with `sed` for width):
+```text
+container_cpu_usage_seconds_total{name="aws-local-lab-redis-1",...} 0.495778 1795434633174
+container_memory_working_set_bytes{name="aws-local-lab-redis-1",...} 4.378624e+06 1795434633174
+container_network_receive_bytes_total{name="aws-local-lab-redis-1",...} 19142 1795434633174
+```
+The last number is a timestamp in milliseconds: cAdvisor stamps the values with the moment it read them.
+
+**Regression check — the whole suite.** The first run after adding cAdvisor ended with `07_async: FAILED` (the first job request was answered `202`, but the answer did not say `queued` and the job was then not found: status `none`; the other six scripts passed). Run alone, a minute later, `bash tests/07_async.sh` passed all its checks, and a second `make test` passed all seven scripts with exit code 0:
+```text
+02_failover: all checks passed
+02_load_balancing: all checks passed
+03_network_isolation: all checks passed
+04_persistence: all checks passed
+05_cache: all checks passed
+06_storage: all checks passed
+07_async: all checks passed
+```
+I could not find the cause of the single failure. At the moment I looked, every container showed `Up 2 minutes`, i.e. the whole stack had been re-created shortly before, which fits the already known "first requests after a restart can fail" behaviour of this lab (Troubleshooting of Labs 06 and 07), but I did not prove it, and I cannot exclude an effect of the added containers. It happened once and did not come back; if it does, run `make test` again and look at `docker compose logs api worker redis` right after.
+
+**What just happened:**
+- A second source of metrics joined the first: **cAdvisor**, which turns the kernel's per-container counters into Prometheus metrics. Together with the API's own metrics you can now ask both "how many requests per second?" and "what does it cost in CPU and memory?".
+- The numbers are **raw material**: a counter of CPU seconds becomes useful through `rate()`, memory is a gauge read as it is, and the Compose labels let you pick this project's containers out of everything else on the machine.
+- The cost was kept low on purpose: only what we plot (CPU, memory, network), only Docker containers, two labels instead of fifteen, one read every 10 s.
+- **Not done / to know:** cAdvisor reads a **virtual machine's** kernel on Docker Desktop, so on Linux the same configuration reads your real host. It needs wide read access to the host's folders (`/`, `/sys`, `/var/lib/docker`), the reason such an agent runs on the private network only and is never published. No alerts yet, and no limits on the containers (`mem_limit`, `cpus`), so "usage" cannot yet be compared to a ceiling.
+
 ## 5–11. To be completed at the end of Lab 09
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 35). The problems met so far:
 
@@ -493,4 +678,10 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `promtool: error: path 'C:/prometheus.yml' does not exist` | Git Bash rewrites the container path `/c/prometheus.yml` (mounted with `-v ...:/c`) into a Windows path. | `export MSYS_NO_PATHCONV=1`, and a mount point that does not look like a drive (`/cfg`). |
 | `http://prometheus.localhost:8088/` is not served after `docker compose up -d` | `lb` was not re-created (only its mounted `nginx.conf` changed), so it still runs the old configuration. | `docker compose exec -T lb nginx -s reload`. |
 | `sum(http_requests_total{...})` is larger than the number of requests you sent | Counters count since each replica started, and the tests had already sent traffic. | Use `rate(...)` or `increase(...[5m])` to look at a period, not the raw counter. |
+| `docker pull gcr.io/cadvisor/cadvisor:v0.60.6` → `not found` (also `v0.61.1`) | The official image has moved: recent versions are published on GitHub's registry, while the old Google registry only has older tags (`v0.55.1` exists there, `v0.53.0` does not). Found by testing the tags with `docker manifest inspect`. | Use `ghcr.io/google/cadvisor:v0.60.6`. |
+| `docker run --entrypoint /usr/bin/cadvisor ... -help` fails with `OCI runtime create failed ... unable to start container process` (Git Bash on Windows) | Git Bash rewrites the container path `/usr/bin/cadvisor` into a Windows path. | `export MSYS_NO_PATHCONV=1` first. (cAdvisor's help is also `-help` with one dash, not `--help`.) |
+| `container_cpu_usage_seconds_total` returns series of containers that are not part of the lab | cAdvisor sees every container of the Docker Desktop VM, including those of other projects. | Filter on the Compose labels: `{container_label_com_docker_compose_project="aws-local-lab"}`. |
+| `docker compose kill -s HUP prometheus` prints `Killing` / `Killed` | Compose's word for sending a signal. Prometheus keeps running and reloads its configuration (see its log: `Loading configuration file`). | Nothing to fix. `docker compose restart prometheus` also works, but restarts the process. |
+| Prometheus log at the first start: `Error refreshing DNS targets ... could not resolve "api"` | Prometheus started before the `api` replicas were reachable by name. It retries every `refresh_interval` and the targets appear once DNS answers. | Wait a few seconds. Compose could also make Prometheus depend on `api`. |
+| `make test` ends with `07_async: FAILED` once (job status `none`), then passes alone and on a second run | Not found. Seen once right after the whole stack had been re-created; this lab's first requests after a restart are known to be fragile. | Run `make test` again; if it returns, look at `docker compose logs api worker redis` right away. |
 | `02_failover` fails with `59 of 60` in `make test` | The known intermittent failure of Lab 02 (unrelated to the metrics). | Run it again: `bash tests/02_failover.sh`. |
