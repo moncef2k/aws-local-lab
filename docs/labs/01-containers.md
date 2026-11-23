@@ -359,6 +359,7 @@ docker rmi aws-local-lab-api:0.1.0     # optional: also delete the image
 - Course: [Docker 07 - Docker networks and service-name DNS](../courses/docker/07-networks.md)
 - Course: [Docker 09 - Docker Compose](../courses/docker/09-compose.md)
 - Course: [Docker 10 - Debugging: logs, exec, inspect](../courses/docker/10-debugging.md)
+- Course: [FastAPI 01 - How a Python web API works, and routes](../courses/fastapi/01-how-a-web-api-works.md)
 - Course: [Networking 01 - IP addresses, ports, localhost and TCP](../courses/networking/01-ip-ports-tcp.md)
 - Course: [Networking 03 - HTTP requests, responses and status codes](../courses/networking/03-http.md)
 - Course: [Networking 05 - NAT and port forwarding](../courses/networking/05-nat-and-port-forwarding.md)

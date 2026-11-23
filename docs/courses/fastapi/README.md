@@ -9,7 +9,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 ## Modules
 | # | Module | Status | First used in the labs |
 |---|---|---|---|
-| 01 | How a Python web API works, and routes | ⬜ planned | Lab 01, step 2 |
+| 01 | [How a Python web API works, and routes](./01-how-a-web-api-works.md) | ✅ written | Lab 01, step 2 |
 | 02 | Uvicorn and ASGI | ⬜ planned | Lab 01, step 2 |
 | 03 | [Path, query and body parameters](./03-parameters.md) | ✅ written | Lab 04, step 12 |
 | 04 | [Pydantic models and validation](./04-pydantic.md) | ✅ written | Lab 04, step 12 |

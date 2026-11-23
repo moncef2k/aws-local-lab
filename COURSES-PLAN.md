@@ -127,7 +127,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 
 | # | Module | File | First appears | Target step | Ticket | Used by |
 |---|---|---|---|---|---|---|
-| 01 | How a Python web API works, and routes | `01-how-a-web-api-works.md` | step 2 (Lab 01) | step 28 | - | `api/` app, `GET /health`, `GET /whoami` |
+| 01 | How a Python web API works, and routes | `01-how-a-web-api-works.md` | step 2 (Lab 01) | step 28 | AWSLAB-121 | `api/` app, `GET /health`, `GET /whoami` |
 | 02 | Uvicorn and ASGI | `02-uvicorn-and-asgi.md` | step 2 (Lab 01) | step 29 | - | Dockerfile `CMD uvicorn ...` |
 | 03 | Path, query and body parameters | `03-parameters.md` | step 12 (Lab 04) | step 19 | AWSLAB-102 | `/notes/{id}`, `POST /notes` body |
 | 04 | Pydantic models and validation | `04-pydantic.md` | step 12 (Lab 04) | step 20 | AWSLAB-104 | Note request/response schemas |
