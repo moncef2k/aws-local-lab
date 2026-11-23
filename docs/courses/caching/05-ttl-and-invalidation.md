@@ -147,7 +147,17 @@ expired_keys:1 expired_keys_active:1 evicted_keys:0
 6. `expired_keys:1`: one key expired by itself (the one of experiment 5), and `expired_keys_active:1` says it was the **background job** that removed it, before the second `GET` asked for it. `evicted_keys:0`: nothing was thrown out for lack of memory. **Expired and evicted are two different counters.**
 7. `DEL` answers `1` the first time (one key removed) and `0` the second (nothing to remove), and `GET` after it gives nothing.
 
-**In the lab itself**, a cached note and its countdown (through the load balancer, then Redis; `$ID` is a new note's id):
+**In the lab itself**, a cached note and its countdown. `rt` asks the lab's Redis for the TTL of a note's copy (the password comes from the container's own environment), and `$ID` is the id of a note just created:
+```bash
+U=http://127.0.0.1:8088
+rt() { docker compose exec -T redis sh -c "REDISCLI_AUTH=\"\$REDIS_PASSWORD\" redis-cli ttl note:$1" | tr -d '\r'; }
+ID=$(curl -s -X POST $U/notes -H 'Content-Type: application/json' -d '{"title":"ttl demo","body":"x"}' | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+rt $ID                                   # before any read
+curl -s -o /dev/null $U/notes/$ID; rt $ID     # right after a read
+sleep 10; rt $ID                         # 10 s later
+curl -s -o /dev/null $U/notes/$ID; rt $ID     # after another read (a HIT)
+curl -s -o /dev/null -X DELETE $U/notes/$ID; rt $ID   # after DELETE
+```
 ```text
 before any read: ttl = -2  (-2 = no such key)
 right after a read:   ttl = 60
@@ -158,7 +168,7 @@ after DELETE:         ttl = -2
 Before any read there is no copy (`-2`); the first read stores one with the full 60 s; ten seconds later 49 are left. **A cache hit does not renew the TTL**: the copy still expires 60 s after it was *stored*, however often it is read. After `DELETE` (which also deletes the copy) the key is gone.
 
 ## What if…?
-**…the TTL is too short, or there is none?** The two extremes are visible in the results above. With **no TTL** (experiment 4 after the plain `SET`, `-1`), a copy that a writer forgot to delete lives on, wrong, until Redis is full and evicts it ([Caching 03](./03-eviction-and-maxmemory.md)); the lab prevents this by always using `ex=CACHE_TTL`. With a **very short TTL** the copy would expire before the next read, every read would be a miss, and the cache would add work (a failed lookup, then the database, then a store) instead of saving it. The right TTL sits between: long enough for several reads, short enough to bound the staleness.
+**…the TTL is too short, or there is none?** The first extreme is visible in the results above, the second is reasoning (not run). With **no TTL** (experiment 4 after the plain `SET`, `-1`), a copy that a writer forgot to delete lives on, wrong, until Redis is full and evicts it ([Caching 03](./03-eviction-and-maxmemory.md)); the lab prevents this by always using `ex=CACHE_TTL`. With a **very short TTL** the copy would expire before the next read, every read would be a miss, and the cache would add work (a failed lookup, then the database, then a store) instead of saving it. The right TTL sits between: long enough for several reads, short enough to bound the staleness.
 
 ## In short
 1. A **TTL** is a countdown on a key: `SET key value EX 60`. `TTL` shows it (`-1` = none, `-2` = no such key). Redis removes expired keys lazily when touched and actively in the background.
