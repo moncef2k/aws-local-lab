@@ -130,6 +130,14 @@ HTTPServer(("0.0.0.0", 8000), Echo).serve_forever()
 | `sed -E 's/\[[^]]*\]/[time]/'` | Replace the text between square brackets by `[time]`: shortens the log lines for reading. |
 | `docker run -d --rm --name web --network nginx08 -p 127.0.0.1:18150:8080 -v "$D/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.30.6-alpine` | Start Nginx with your config: `-d` background, `--rm` delete when stopped, `--name`, `--network`, `-p` publish on your machine only, `-v ... :ro` mount read-only. |
 | `D=$(pwd -W)` and `MSYS_NO_PATHCONV=1` | Git Bash on Windows: the folder as a Windows path for `-v`, and no rewriting of `/...` arguments. |
+| `docker network create nginx08` / `docker network rm nginx08` | A private demo network so the containers find each other by name (`backend`); removed at the end. |
+| `docker run -d --rm --name backend --network nginx08 -v "$D:/demo" -w /demo aws-local-lab-api:0.1.0 python echo.py` | The backend: the project's API image (it has Python), your folder mounted at `/demo` (`-v`), and the process started in it (`-w`). |
+| `docker stop web web-crit backend` | Stop several containers at once (they were started with `--rm`, so they disappear). |
+| `grep -v '^/docker-entrypoint\|^10-listen\|^$'` | Drop (`-v`) the startup messages of the image and empty lines, so only access-log lines remain. `\|` means "or" in this pattern. |
+| `grep -c '\[error\]'` | Count (`-c`) the lines that contain `[error]`. |
+| `sed 's#error_log /dev/stderr notice;#error_log /dev/stderr crit;#' nginx.conf > nginx.crit.conf` | Make a copy of the config with the level changed (`#` is used as the separator because the text contains `/`). |
+| `sleep 2` / `sleep 3` | Wait for the containers to be ready before the first request. |
+| `\|` in a table cell (as in the `grep -E` row above) | In these tables `\|` is how a literal `|` is written inside a cell; in `run.sh` and in your terminal you type a plain `|`. |
 
 ## Hands-on
 Throw-away containers (`nginx:1.30.6-alpine`, and the project's `aws-local-lab-api:0.1.0` for Python). Make a folder with `nginx.conf`, `echo.py` and this `run.sh`:
