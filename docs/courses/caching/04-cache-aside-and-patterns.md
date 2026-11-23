@@ -26,7 +26,6 @@
 | **Write-back** (write-behind) | Writes go **only** to the cache; the database is updated **later**, in batches. |
 | **Dirty** | A cached value that has been changed but not yet written to the database (write-back). |
 | **Bypass** | Skip the cache and answer from the source because the cache cannot be used (here, Redis is down). |
-| **Header** | A line of extra information in an HTTP request or answer. The lab adds `X-Cache` to tell you what the cache did. |
 
 ## The idea
 **Everyday analogy.** You study with a big library (the database) in another building, and a small shelf (the cache) next to your desk. **Cache-aside** is how most people behave: when you need a book you look on your shelf first; if it is not there you walk to the library, bring it back, and **put it on your shelf** for next time. When you learn that the library replaced a book with a new edition, you **take the old copy off your shelf** so you will fetch the new one next time. Nobody else manages your shelf: *you* do. The other patterns change who does the work: a **read-through** shelf would fetch missing books by itself; **write-through** means every correction is written in both places at once; **write-around** means you correct the library only and leave the shelf alone; **write-back** means you scribble corrections on the shelf and promise to copy them to the library "later" — and if the shelf burns down first, the corrections are gone.
@@ -114,7 +113,7 @@ def forget(note_id: int) -> None:                # called by PUT and DELETE afte
 ## The commands
 | Command / flag | Meaning |
 |---|---|
-| `curl -s -i URL` | `-s` silent, `-i` print the response **headers** with the body: the status line and `x-cache` are what we read. |
+| `curl -s -i URL` | `-s` silent, `-i` print the response **headers** (lines of extra information that come before the body, such as `x-cache`) with the body: the status line and `x-cache` are what we read. |
 | `grep -iE '^(HTTP\|x-cache)'` | Keep only the lines that start with `HTTP` or `x-cache` (`-i` = ignore upper/lower case, `-E` = extended patterns, where a `|` means "or"). In this table the `|` is written `\|`; in your terminal type a plain `|`. |
 | `tr -d '\r'` | Delete the carriage returns that HTTP puts at the end of each header line. |
 | `curl -X PUT URL -H 'Content-Type: application/json' -d '{...}'` | Send a `PUT` with a JSON body (`-X` = method, `-H` = a header, `-d` = the body). |
@@ -161,11 +160,7 @@ created note 101
 **Part 2 — the five patterns side by side.** `patterns.py` (below) simulates four of them with Python dictionaries standing in for the cache and the database: each strategy writes `"v1"`, reads three times, writes `"v2"`, reads three times, and counts the database work. It is a **simulation** (no Redis, no Postgres): it shows the logic, not the speed.
 
 ```python
-"""Four ways to keep a cache and a database together, with dictionaries instead of real servers.
-Each strategy: write "v1", read 3 times, write "v2", read 3 times. We count the work done by the
-database and look at what the readers saw."""
-
-
+# Four ways to keep a cache and a database together, with dictionaries instead of real servers.
 class Strategy:
     name = "?"
     def __init__(self):
@@ -234,7 +229,7 @@ s.write("note", "v2")                         # v2 only in the cache
 s.cache.clear()                               # the cache server dies before the next flush
 print(f"\nwrite-back after a cache crash: database holds {s.db['note']!r}; the write of 'v2' is lost")
 ```
-(Save it as `patterns.py` in an empty folder.) Run it in a throw-away Python container:
+(Save it as `patterns.py`.) Run it in a throw-away Python container:
 
 ```bash
 D=$(pwd -W)    # Git Bash on Windows; on Linux or macOS: D=$(pwd)
@@ -299,7 +294,7 @@ After the SQL `UPDATE` (3) the API still answers `HIT` with `original text`: the
 </details>
 
 ## Official documentation
-- [Redis: caching patterns and `SET` with `EX`](https://redis.io/docs/latest/commands/set/)
+- [Redis `SET` (with `EX`)](https://redis.io/docs/latest/commands/set/)
 - [AWS: caching strategies for ElastiCache (lazy loading and write-through)](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Strategies.html)
 
 ## Where you use this in the project
