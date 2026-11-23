@@ -1,9 +1,9 @@
 # Lab 08 — Frontend and CDN (S3 static hosting + CloudFront)
 
 > **AWS equivalent:** Amazon S3 static website hosting + Amazon CloudFront (and ACM for HTTPS)  ·  **Time:** ~60 min  ·  **Difficulty:** ★★☆
-> **Builds on:** [Lab 07](./07-queues-workers.md)  ·  **Reference solution:** commits `64587b8` and `f2536a0` (step 26), `9ebb73b` (step 27) on `dev`
+> **Builds on:** [Lab 07](./07-queues-workers.md)  ·  **Reference solution:** commits `64587b8` and `f2536a0` (step 26), `9ebb73b` (step 27), `5834d55` (step 28) on `dev`
 
-> **Status:** in progress. Steps 26–27 are written. Step 28 (local HTTPS, optional) and the closing sections (5–11) come next.
+> **Status:** complete. Steps 26–28 and the closing sections (5–11) are written.
 
 ## 1. What you will learn
 - Explain the difference between **static** and **dynamic** content, and why static files are served by something other than the API.
@@ -40,7 +40,7 @@ Console: **S3** and **CloudFront → Distributions**. A very common setup mirror
 | The static web server | S3 website hosting | the `frontend` service: a plain Nginx serving that folder, read-only |
 | One entry point, routing by path | CloudFront behaviors (`/` → S3, `/api/*` → ALB) | the `lb` Nginx: `location = /` → frontend, every other path → API |
 | Caching at the edge | CloudFront cache policy, `Cache-Control` from the origin | step 27: `Cache-Control`, `ETag` (the "edge" is your browser) |
-| HTTPS certificate | ACM | step 28 (optional): a local certificate made with mkcert |
+| HTTPS certificate | ACM | step 28 (optional): a self-signed certificate made with OpenSSL (`make cert`); mkcert would also work |
 | Edge locations around the world | CloudFront's network | **not simulated** (one machine) |
 | Invalidation, WAF, custom domain | CloudFront / WAF / Route 53 | not simulated |
 
@@ -331,6 +331,8 @@ make test
 - **Not yet:** the page is sent **without caching instructions** (no `Cache-Control`), so a browser may ask for it again each time or guess how long to keep it: step 27 sets the headers properly. And the files are bind-mounted from your folder; in AWS they would be **uploaded** to the bucket as part of a deployment.
 
 ### Step 27 — Caching headers
+> Note: from step 28 on, `http://localhost:8088/` (the page) answers `301` and redirects to HTTPS. The commands of this step were run before that: to repeat them now, use `https://localhost:8443/` with `--cacert certs/localhost.pem` (see step 28), or add `-L -k` to `curl`. The API paths and the asset still answer on plain HTTP.
+
 **Why:** at the end of step 26 the page was served with an `ETag` and a `Last-Modified` date (Nginx adds them for every file) but with **no instruction about how long to keep it**. A browser then **guesses** (usually from the age of the file), which gives surprises: a page that does not update after a deployment, or one that is downloaded again and again. This step tells browsers (and, in AWS, CloudFront) **exactly** what to do, with two rules.
 
 **The theory in five lines.**
@@ -631,9 +633,208 @@ make test
 - **Not simulated:** the CDN's own cache. The load balancer does not store anything (every request reaches the frontend container); only the **browser** caches. A real CloudFront would keep copies at its **edge locations** too, following the same `Cache-Control` rules, and would need an **invalidation** to drop a copy before it expires.
 - **Not done:** compression (`gzip`), and other asset types (images, fonts); the CSS is still inline. Nothing in the page is hashed except the script.
 
-## 5–11. To be completed at the end of Lab 08
-Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 28). The problems met so far:
+### Step 28 — Local HTTPS (optional)
+**Why:** everything so far travels as **plain HTTP**: anyone on the path between the browser and the server can read it or change it. The web fixed that with **TLS** (*Transport Layer Security*): the same HTTP, inside an encrypted, authenticated tunnel. That is what the `https://` and the padlock mean. In AWS you almost never handle certificates by hand: **ACM** issues them and the **load balancer** or **CloudFront** uses them. This step builds the local version of that.
 
+**The theory in six lines.**
+1. TLS gives three things: **encryption** (nobody can read the traffic), **integrity** (nobody can change it unnoticed) and **authentication** (you are really talking to the owner of the name you typed).
+2. Authentication rests on a **certificate**: a small signed document that says "this public key belongs to `localhost`", plus a **private key** that only the server holds. The certificate is public; the private key is a **secret**.
+3. A browser trusts a certificate when it was signed by a **certificate authority (CA)** that the browser (or the operating system) already trusts. That is what the padlock checks.
+4. A **self-signed** certificate is signed by itself: there is no authority behind it, so a browser **refuses** it by default (you can accept the warning, or tell your tool to trust that exact certificate).
+5. **TLS termination**: the load balancer ends the encrypted connection and talks plain HTTP to the containers behind it, inside the private network. One place holds the certificate; the containers need none.
+6. The server's certificate lists the names it is valid for (**subject alternative names**, SAN). If you open `https://other-name/`, the browser refuses a certificate that does not list it.
+
+**The decision for this step.** The plan said to use **mkcert**, a small tool that creates a local certificate authority and installs it in your system's trust store, so browsers show a padlock with no warning. Installing it changes your system-wide trust, so I asked; **you chose not to install anything**. Instead the lab makes a **self-signed certificate with OpenSSL, inside a throw-away container**, so nothing is installed or trusted on your machine. The price is a one-time browser warning and `--cacert` for `curl`. (With mkcert, only the certificate files would differ; the Nginx configuration is the same.)
+
+**Do it.** Three files (and the plan tick).
+
+1. `Makefile`: a `cert` target that creates the certificate **once** (it does nothing if `certs/localhost.pem` exists), and `make up` now runs it first, so a fresh clone gets a certificate without thinking about it:
+   ```make
+   # OpenSSL runs in a throw-away container, so nothing but Docker is needed on the host.
+   cert: ## Make a self-signed certificate for localhost in certs/ (once; for HTTPS, Lab 08 step 28)
+   	@mkdir -p certs
+   	@if [ -f certs/localhost.pem ]; then \
+   	  echo "certs/localhost.pem exists (delete the certs folder to make a new one)"; \
+   	else \
+   	  MSYS_NO_PATHCONV=1 docker run --rm -v "$$(pwd -W 2>/dev/null || pwd):/work" -w /work alpine:3.24 sh -c \
+   	    'apk add -q --no-cache openssl && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 365 -keyout certs/localhost.key -out certs/localhost.pem -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1"' \
+   	  && echo "certificate written: certs/localhost.pem (private key: certs/localhost.key, both ignored by git)"; \
+   	fi
+
+   up: cert ## Build and start the lab in the background
+   ```
+   (Only the first word after `up:` is new: `up` now depends on `cert`; the rest of the `up` recipe is unchanged.)
+
+2. `docker-compose.yml`, in the `lb` service: publish port 443 and mount the certificate folder read-only:
+   ```yaml
+     lb:
+       # ...
+         - ./lb/nginx.conf:/etc/nginx/nginx.conf:ro
+         # The certificate and key made by "make cert" (read-only, never committed).
+         - ./certs:/etc/nginx/certs:ro
+       ports:
+         # The only door into the lab, on your machine only (127.0.0.1).
+         - "127.0.0.1:${LB_HOST_PORT:-80}:80"
+         # The same door over HTTPS. 8443 by default because 443 is often taken; the redirect in
+         # lb/nginx.conf names this port, so change both together.
+         - "127.0.0.1:${LB_HTTPS_PORT:-8443}:443"
+   ```
+
+3. `lb/nginx.conf`: the default `server` also listens on 443 with TLS, and the page is redirected from HTTP:
+   ```nginx
+       server {
+           listen 80 default_server;
+           listen 443 ssl;
+           http2 on;
+           ssl_certificate     /etc/nginx/certs/localhost.pem;   # made by "make cert" (self-signed)
+           ssl_certificate_key /etc/nginx/certs/localhost.key;
+   ```
+   ```nginx
+           location = / {
+               # A browser that opens the page over plain HTTP is sent to HTTPS (8443 = LB_HTTPS_PORT).
+               # Only the page: the API paths stay reachable over HTTP, so existing clients and tests keep working.
+               if ($scheme = http) {
+                   return 301 https://$host:8443$request_uri;
+               }
+               proxy_pass http://frontend;
+               proxy_set_header Host $host;
+               add_header Cache-Control "no-cache";
+           }
+   ```
+
+| Line | What it does | If you change or remove it |
+|---|---|---|
+| `docker run --rm -v "$(pwd -W):/work" -w /work alpine:3.24 sh -c '...'` | Runs OpenSSL in a pinned throw-away container, with your project folder visible as `/work`: **nothing but Docker is needed** on your machine (`pwd -W` gives Git Bash's folder as a Windows path). | Calling `openssl` directly from the recipe ended with `Error 127` (command not found) on this machine, probably because the bash that `make` starts does not see Git's OpenSSL (see Troubleshooting). |
+| `openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 365` | Makes a **self-signed** certificate (`-x509`) with a new **elliptic-curve** key (P-256: small and fast), **without** a passphrase on the key (`-nodes`), valid for 365 days. | A passphrase on the key would stop Nginx from starting unattended. |
+| `-keyout certs/localhost.key -out certs/localhost.pem` | Where the private key and the certificate go. Both names match the `*.key` and `*.pem` patterns of `.gitignore`: **never committed**. | |
+| `-subj "/CN=localhost"` and `-addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1"` | The certificate's name, and the names it is valid for: `localhost`, any `*.localhost` (such as `s3.localhost`) and `127.0.0.1`. Browsers read the **SAN**, not the subject. | Without the SAN, `https://localhost` would be refused even when you trust the certificate. |
+| `if [ -f certs/localhost.pem ]` | Idempotent: it does not replace an existing certificate. | Delete the `certs` folder to make a new one. |
+| `./certs:/etc/nginx/certs:ro` | The certificate and key appear inside the container, read-only. | |
+| `"127.0.0.1:${LB_HTTPS_PORT:-8443}:443"` | Publishes the container's port 443 on your machine, loopback only. **8443** by default: port 443 is often taken (here another project's container holds it). | Set `LB_HTTPS_PORT=443` in `.env` if yours is free, and change the `8443` of the redirect too. |
+| `listen 443 ssl;` | The server also accepts TLS connections on 443. The rest of the `server` (every `location`) is **shared** by HTTP and HTTPS. | |
+| `http2 on;` | Allows HTTP/2 on the TLS connection (the browser and server agree on it during the handshake: **ALPN**). | |
+| `ssl_certificate` / `ssl_certificate_key` | The certificate to present and its private key. | A missing file stops Nginx from starting. |
+| `if ($scheme = http) { return 301 https://$host:8443$request_uri; }` | A request for the page that arrived over HTTP gets a **301 Moved Permanently** to the HTTPS address (`$host` keeps the name, `8443` is the published HTTPS port). | |
+| (the redirect is only in `location = /`) | **Only the page** is redirected. A redirect for **everything** would send every `http://` test and API client to a certificate they do not trust. In a real site you would redirect all of it and the clients would use `https://`. | |
+
+**Create the certificate and start the load balancer with it:**
+```bash
+make cert
+make cert                       # a second time
+docker compose up -d --wait lb
+docker compose exec -T lb nginx -t
+docker compose port lb 443
+```
+```text
+certificate written: certs/localhost.pem (private key: certs/localhost.key, both ignored by git)
+certs/localhost.pem exists (delete the certs folder to make a new one)
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+127.0.0.1:8443
+```
+(Output of the five commands in one run: the first `make cert` wrote the files, the second did nothing. `docker compose up -d` **did** recreate `lb` this time, because its published ports changed.) The files are 241 bytes (key) and 631 bytes (certificate), small thanks to the elliptic-curve key. Git ignores them (`git check-ignore -v certs/localhost.pem` names the `*.pem` line of `.gitignore`).
+
+**Check 1 — the step's check: `curl https://localhost:8443/health`** (the port is 8443 here, not 443):
+```bash
+curl -sS https://localhost:8443/health                                   # trust nobody
+curl -sk https://localhost:8443/health                                   # -k: do not check the certificate at all
+curl -s --cacert certs/localhost.pem -w '\nHTTP %{http_code}, TLS verify result %{ssl_verify_result}\n' https://localhost:8443/health
+```
+```text
+curl: (60) schannel: SEC_E_UNTRUSTED_ROOT (0x80090325) - The certificate chain was issued by an authority that is not trusted.
+More details here: https://curl.se/docs/sslcerts.html
+{"status":"ok"}  HTTP 200
+{"status":"ok"}
+HTTP 200, TLS verify result 0, HTTP version 1.1
+```
+(The second command's `HTTP 200` and the third's lines come from `-w`.) Three outcomes for one server: **without trust** `curl` refuses (`curl: (60)`, "not trusted": the certificate is self-signed); with **`-k`** it skips the check (works, but you have lost the authentication: only for experiments); with **`--cacert certs/localhost.pem`** you tell `curl` to trust **that exact certificate**, and it answers `200` with `TLS verify result 0` (= verified). Verified here means "this is the certificate I trusted", which is all a local lab needs.
+
+**Check 2 — what was negotiated, and the certificate as served** (`openssl s_client` opens a TLS connection and reports; the Windows `curl` of this machine has no HTTP/2 support, so ALPN is read from this tool):
+```bash
+openssl s_client -connect localhost:8443 -servername localhost -alpn h2 </dev/null 2>/dev/null | grep -a -E 'Protocol|Cipher|ALPN|Verif'
+openssl s_client -connect localhost:8443 -servername localhost </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
+```
+```text
+Verification error: self-signed certificate
+New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+ALPN protocol: h2
+Verify return code: 18 (self-signed certificate)
+    Protocol  : TLSv1.3
+    Cipher    : TLS_AES_256_GCM_SHA384
+  subject=CN=localhost
+  issuer=CN=localhost
+  notBefore=Nov 23 10:45:41 2026 GMT
+  notAfter=Nov 23 10:45:41 2027 GMT
+  X509v3 Subject Alternative Name: 
+      DNS:localhost, DNS:*.localhost, IP Address:127.0.0.1
+```
+- **TLS 1.3** with the cipher `TLS_AES_256_GCM_SHA384`; and `ALPN protocol: h2`: HTTP/2 was agreed during the handshake. (Forcing the older version also works: `-tls1_2` answers `Protocol : TLSv1.2`, `-tls1_3` answers `TLSv1.3`.)
+- **`subject` and `issuer` are both `CN=localhost`**: signed by itself, hence `Verify return code: 18 (self-signed certificate)`. A certificate from a real authority has a different issuer.
+- Valid for one year (`notBefore`/`notAfter`), and the **SAN** lists the three names asked for.
+
+**Check 3 — the redirect, and what did not change.**
+```bash
+curl -s -I http://127.0.0.1:8088/ | grep -iE '^(HTTP|location)'                  # the page over HTTP
+curl -s -o /dev/null -w 'GET http://.../health -> %{http_code}\n' http://127.0.0.1:8088/health   # the API over HTTP
+curl -s -I --cacert certs/localhost.pem https://localhost:8443/ | grep -iE '^(HTTP|cache-control|etag)'
+curl -s -I --cacert certs/localhost.pem https://localhost:8443/assets/app.540efee7.js | grep -iE '^(HTTP|cache-control)'
+curl -s --cacert certs/localhost.pem https://localhost:8443/whoami
+```
+```text
+HTTP/1.1 301 Moved Permanently
+Location: https://127.0.0.1:8443/
+GET http://.../health -> 200
+HTTP/1.1 200 OK
+ETag: "6b04051c-9df"
+Cache-Control: no-cache
+HTTP/1.1 200 OK
+Cache-Control: public, max-age=31536000, immutable
+{"hostname":"909d16b54f35"}
+```
+The page over HTTP answers **`301`** with `Location: https://127.0.0.1:8443/` (the name you typed, the HTTPS port). The API over HTTP still answers `200`: existing clients and tests are not affected. Over HTTPS the page keeps its `no-cache` + `ETag` and the script keeps `immutable` (step 27): the caching rules do not depend on the scheme. The API answers over HTTPS too (a replica's container id).
+
+**Check 4 — a real browser.** Chromium in the pinned Playwright container, first **strict** (no exception), then **accepting the certificate warning**, as you would by clicking "Advanced, continue":
+```text
+strict browser: Page.goto: net::ERR_CERT_AUTHORITY_INVALID at http://host.docker.internal:8088/
+after accepting the warning: opened http://...:8088/, ended at https://host.docker.internal:8443/
+page protocol: https: | calls shown: 12 | health line: GET /health: HTTP 200 {"status":"ok"}
+```
+(A throw-away Playwright snippet, not part of the repository; the host name `host.docker.internal` is how the container reaches your machine, and the certificate does not list it: that is one more reason a strict browser refuses.) The **strict** browser stops with `ERR_CERT_AUTHORITY_INVALID`: it does not trust this certificate's issuer, exactly what a real visitor's browser would do with a self-signed certificate. After accepting the warning, the page opened at `http://…:8088/` **ended at `https://…:8443/`** (the redirect), `location.protocol` is `https:`, and the page works as before: 12 calls, green health line. In your own browser you will see "Your connection is not private": expected; accept it for this lab address only.
+
+**Regression check — the whole suite:**
+```bash
+make test
+```
+```text
+02_failover: all checks passed
+02_load_balancing: all checks passed
+03_network_isolation: all checks passed
+04_persistence: all checks passed
+05_cache: all checks passed
+06_storage: all checks passed
+07_async: all checks passed
+```
+(Lines filtered to the summaries; `make` exited with code 0 on this run, and `docker compose ps lb` shows `127.0.0.1:8088->80/tcp, 127.0.0.1:8443->443/tcp`. `02_failover` stays intermittent on this machine, see Lab 02.) The tests use plain HTTP on purpose, which is why only the page is redirected. `scripts/screenshot.sh` still works on `http://localhost:8088/`: it already tells Chromium to ignore certificate errors, so it follows the redirect.
+
+**What just happened:**
+- The load balancer now does **TLS termination**: encrypted from the browser to `lb`, plain HTTP on the private network behind it. In AWS this is an **ALB HTTPS listener** or **CloudFront** with an **ACM** certificate.
+- One configuration serves **both schemes**: the same `location` blocks answer on 80 and 443. A **redirect** moves browsers from HTTP to HTTPS (in CloudFront: the viewer protocol policy "Redirect HTTP to HTTPS").
+- You saw the **trust model** work: a self-signed certificate is refused until you decide to trust it (`--cacert`, `-k`, or the browser's warning). A real site gets a certificate from an authority browsers already trust (ACM, Let's Encrypt).
+- The **private key** never leaves your machine and is never committed (`.gitignore`); the certificate is public.
+- **Not done:** HSTS (a header telling browsers to use HTTPS only), redirecting everything, TLS between the load balancer and the containers, certificate renewal (ACM renews by itself; this one expires in a year: `make cert` after deleting the folder).
+
+## 5. Verify it works
+With the lab up (`make up`; if port 80 is busy, `LB_HOST_PORT` in `.env`; HTTPS is on `LB_HTTPS_PORT`, 8443 by default):
+```bash
+make test                                                          # seven scripts, "all checks passed", exit code 0
+curl -s -I http://localhost:8088/ | head -3                        # 301 to https://...:8443/
+curl -s -I --cacert certs/localhost.pem https://localhost:8443/    # 200, Cache-Control: no-cache, ETag
+curl -s -I --cacert certs/localhost.pem https://localhost:8443/assets/app.540efee7.js   # immutable
+curl -s --cacert certs/localhost.pem https://localhost:8443/health # {"status":"ok"}
+```
+(If only `02_failover` fails with `59 of 60`, run it again: the known intermittent failure of Lab 02.) Then open `https://localhost:8443/` in your browser, accept the warning once, and reload a few times: the call order changes; and in the browser's developer tools (Network tab) the script comes from the cache after the first visit while the page is revalidated.
+
+## 6. Troubleshooting
 | Symptom | Cause | Fix |
 |---|---|---|
 | `GET /` answers `404` with `{"detail":"Not Found"}` | Before step 26 the load balancer sent every path, `/` included, to the API, which has no `/` route. | Step 26: `location = /` sends the page to the frontend. |
@@ -643,3 +844,53 @@ Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, 
 | `make test` fails only in `02_failover.sh` with `59 of 60` | The known intermittent failure of Lab 02 (about 1 run in 3 here, with or without this step's route). | Run it again; see Lab 02 Troubleshooting. |
 | After adding the headers, `curl -s -I .../assets/app.nope.js` (a mistyped name) shows no `Cache-Control` | By design: `add_header` without `always` only applies to successful answers, so a `404` is not told to be cached for a year. | Nothing to fix. Add `always` only if you want headers on errors too (not for a long `max-age`). |
 | A script using the DevTools Protocol reports `status 200` for the page on a revisit, but the server log says `304 0` | After revalidating, Chromium hands the page's scripts the cached copy as a `200`; the wire exchange was a `304`. | Trust the server's access log for what really happened on the wire. |
+| `curl: (60) schannel: SEC_E_UNTRUSTED_ROOT` on `https://localhost:8443/...` | The certificate is self-signed: nobody trusted vouches for it. | Tell `curl` to trust it: `--cacert certs/localhost.pem` (or `-k` for a quick test, which also skips the authentication). |
+| The browser says "Your connection is not private" (`ERR_CERT_AUTHORITY_INVALID`) | Same cause. | Accept the warning for this address. To get a padlock, install mkcert and make a certificate with it (the Nginx configuration does not change). |
+| `curl: option --http2: the installed libcurl version does not support this` | The `curl` of this Windows machine was built without HTTP/2. | Read the negotiated protocol with `openssl s_client -alpn h2` (it prints `ALPN protocol: h2`), or use another `curl`. |
+| `make cert` ends with `Error 127` (command not found) when the recipe calls `openssl` | Probably the bash that `make` starts does not find the OpenSSL that Git Bash has in your terminal (not investigated further). | The recipe runs OpenSSL in a container (`docker run ... alpine:3.24`), so it only needs Docker. |
+| `http://localhost:8088/` answers `301` instead of the page (the commands of steps 26 and 27 used it) | Since step 28 the page is redirected to HTTPS. | Use `https://localhost:8443/` with `--cacert certs/localhost.pem`, or add `-L -k` to follow the redirect for a quick look. |
+
+## 7. Going to real AWS
+- **What changes:** the files go to an **S3 bucket** (private, with **Origin Access Control**) or to S3 **static website hosting**, behind a **CloudFront distribution**. One distribution can have **two origins** with path **behaviors**: `/` (and `/assets/*`) to the bucket, `/api/*` to the **ALB** in front of the API: exactly the routing of this lab's `lb`, and it keeps the page and the API on **one origin** (no CORS).
+- **HTTPS:** an **ACM certificate** for your domain (public certificates are free and renew themselves). For CloudFront the certificate must be requested in **us-east-1**. The **viewer protocol policy** "Redirect HTTP to HTTPS" replaces the redirect of `lb/nginx.conf`; the ALB gets an HTTPS listener with the same certificate and a **security policy** that fixes the TLS versions and ciphers. **Route 53** points the domain name to the distribution.
+- **Caching:** the same headers as step 27. Put `Cache-Control` on the S3 objects (metadata set when you upload: `immutable` for hashed files, `no-cache` for `index.html`), or use a **response headers policy** and **cache policy** on CloudFront. CloudFront keeps copies at its **edge locations** following those rules, so a new deployment needs either hashed names (as here), a short TTL for the page, or an **invalidation**. Add **HSTS** with a response headers policy once HTTPS works.
+- **What this lab does not simulate:** edge locations and the CDN's own cache (only the browser caches), ACM and real certificate authorities (the certificate here is self-signed, so browsers warn), custom domains and DNS, WAF, access logs, and compression and image formats a real CDN handles.
+- **Rough cost:** S3 bills for storage and requests, CloudFront for data transferred out and requests (a small site costs very little, and both have a free monthly allowance), ACM public certificates are free, a Route 53 hosted zone has a small monthly fee. See the [CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/) and [S3 pricing](https://aws.amazon.com/s3/pricing/) pages; prices change.
+
+## 8. Clean up
+```bash
+make down                  # removes the containers and networks (the volumes are kept)
+```
+The certificate and key live in the `certs` folder of the project: delete that folder when you no longer need HTTPS (`make cert` makes a new pair at the next `make up`). The screenshots under `docs/labs/images/lab-08/` are part of the course: keep them. `make clean` deletes ALL lab volumes (it asks you to type "yes" first: run it yourself).
+
+## 9. Check your understanding
+1. What is the difference between `Cache-Control: no-cache` and `no-store`, and which does the page of this lab use?
+2. A browser has `app.540efee7.js` in its cache, marked `immutable` for a year. The script changes. How does the visitor get the new version, without waiting a year?
+3. What does the `304 Not Modified` answer mean, and what does the browser send to get it?
+4. What does TLS termination mean, and where does it happen in this lab and in AWS?
+5. Why does a browser refuse the self-signed certificate of this lab, and what are two ways to trust it?
+
+<details><summary>Answers</summary>
+
+1. `no-cache` lets the browser **store** the response but requires it to **revalidate** (ask the server) before reusing it; `no-store` forbids storing it at all. The page uses `no-cache` (with an `ETag`, so revalidation is a cheap `304`).
+2. The new script has a **new name** (the hash changes), and `index.html`, which is revalidated at every visit, now points to that new name. The browser never asks for the old name again, so the old cache entry is simply unused.
+3. "The copy you have is still good": the response has **no body**. The browser sent the `ETag` it remembered in an `If-None-Match` header, and the server found it unchanged.
+4. The load balancer ends the **encrypted** connection and speaks **plain HTTP** to the containers behind it, so only one component needs the certificate. In this lab it is the `lb` Nginx (port 443); in AWS, an ALB HTTPS listener or CloudFront with an ACM certificate.
+5. It is signed by itself, not by a certificate authority the browser trusts, so nothing vouches for it (`issuer` equals `subject`). To trust it: tell `curl` with `--cacert certs/localhost.pem` (or accept the warning in the browser), or use mkcert, which installs a local authority that the system trusts.
+
+</details>
+
+## 10. Exercises (optional)
+- Change one line of `frontend/assets/app.540efee7.js`, recompute its hash with `sha256sum | cut -c1-8`, rename the file, update `index.html`, and reload with the browser's developer tools open: which requests go to the network, and which come from the cache?
+- Move the inline CSS of `index.html` into a hashed `assets/style.<hash>.css`, serve it with the same `immutable` rule, and check the response headers with `curl -I`.
+- Add the HSTS header to the HTTPS responses (`add_header Strict-Transport-Security "max-age=300" always;` in the `server` block, only for HTTPS) and see it with `curl -I`. Why is a short `max-age` the right way to try it?
+- Redirect **everything** from HTTP to HTTPS, and change the seven tests to use `https://` with `--cacert`. What did you have to change, and why is that the real-world situation?
+- Install mkcert (`winget install FiloSottile.mkcert`, then `mkcert -install`), make a certificate with it instead of `make cert`, and open the page in your browser: the padlock appears. Which file did you replace, and did the Nginx configuration change?
+
+## 11. Further reading
+- [MDN: HTTP caching](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching) and [`Cache-Control`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control) (MDN)
+- [MDN: `ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag) and [`304 Not Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/304) (MDN)
+- [Hosting a static website on Amazon S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html) and [what is Amazon CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html) (AWS)
+- [AWS Certificate Manager](https://docs.aws.amazon.com/acm/latest/userguide/acm-overview.html) and [requiring HTTPS in CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https.html) (AWS)
+- [Nginx: configuring HTTPS servers](https://nginx.org/en/docs/http/configuring_https_servers.html) and [`ngx_http_ssl_module`](https://nginx.org/en/docs/http/ngx_http_ssl_module.html) (Nginx)
+- [`openssl req`](https://docs.openssl.org/master/man1/openssl-req/) (OpenSSL) and [mkcert](https://github.com/FiloSottile/mkcert) (the tool the plan first suggested)

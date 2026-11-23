@@ -5,6 +5,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 
 | Term | What it means | AWS service / local stand-in | Lab |
 |---|---|---|---|
+| **ACM** (Certificate Manager) | The service that issues and renews TLS certificates for free; load balancers and CloudFront use them. | AWS: ACM · Local: a self-signed certificate made by `make cert` | 08 |
 | **Active vs passive health check** | Active: the load balancer calls a health URL on a timer and removes failing servers before users notice (AWS ALB). Passive: it only notices a server is dead when a real request fails (open-source Nginx). | AWS: target group health check · Local: Nginx `max_fails` / `fail_timeout` | 02 |
 | **ALB** (Application Load Balancer) | Receives web traffic and spreads it over several copies of an app; stops sending traffic to broken ones. | AWS: ALB · Local: Nginx | 02 |
 | **Alembic** | The migration tool of the SQLAlchemy family: applies numbered migration scripts to a database and remembers which ones were applied (in the `alembic_version` table). | Local tool (AWS has no equivalent: you run it as a task or CI step) | 04 |
@@ -15,10 +16,13 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Bastion host** | A small, hardened server you go through to reach machines that are not exposed to the internet (such as a database in a private subnet). AWS offers Systems Manager Session Manager as a bastion without open ports. | AWS: bastion EC2 / SSM Session Manager · Local: the `db-proxy` service | 04 |
 | **Bridge network** | A virtual network created by Docker; containers on it can reach each other by name. | Local: Docker network | 03 |
 | **Bucket** | A named container for files (objects) in object storage. | AWS: S3 bucket · Local: SeaweedFS bucket | 06 |
+| **Cache busting** | Changing a file's name when its content changes (for example `app.540efee7.js`, the hash of the content), so a copy cached for a year can never be stale. | AWS: S3 object names behind CloudFront · Local: `frontend/assets/` | 08 |
 | **Cache hit / miss** | A **hit** means the answer was found in the cache; a **miss** means it was not, so the program asks the original source (the database) and usually stores the answer. | Local: Redis cache (Lab 05) | 05 |
 | **Cache invalidation** | Removing or refreshing a cached copy because the original changed. In cache-aside the application deletes the cached copy right after it writes to the database. | Local: `forget()` in `api/main.py` | 05 |
 | **Cache-aside** | Read pattern: look in the cache first; on a miss, read the database and store the result in the cache. | AWS: ElastiCache · Local: Redis | 05 |
+| **Cache-Control** | A response header that tells browsers and CDNs how long a copy may be kept: `no-cache` (keep it, but ask before reuse), `no-store` (never keep), `max-age=N`, `immutable`. | AWS: S3 object metadata or a CloudFront response headers policy · Local: set by `lb/nginx.conf` | 08 |
 | **CDN** (Content Delivery Network) | Servers around the world that keep copies of your static files close to users. | AWS: CloudFront · Local: Nginx with caching headers (only the headers, no real CDN) | 08 |
+| **Certificate (TLS)** | A signed public document that says which public key belongs to which name (here `localhost`); the matching private key stays secret on the server (`certs/localhost.key`, never committed). | AWS: ACM · Local: `certs/localhost.pem` | 08 |
 | **CIDR** | A way to write an address range: `172.23.0.0/16` means "addresses starting with `172.23`"; the number after `/` says how many of the 32 bits are fixed (bigger number = smaller range). | AWS: VPC and subnet ranges · Local: Docker network subnets | 03 |
 | **CloudWatch** | AWS monitoring: metrics, logs, dashboards, alarms. | Local: Prometheus + Grafana + Loki | 09 |
 | **Compose profile** | A label on a Compose service (`profiles: ["admin"]`) that keeps it switched off unless you ask for it with `--profile admin`. | Local: used for the optional `db-proxy` | 04 |
@@ -37,6 +41,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Edge location** | A CDN server near the users that keeps copies of your static files, so they travel a short distance. | AWS: CloudFront edge locations · Local: not simulated | 08 |
 | **EKS** | Managed Kubernetes in AWS. | Local: k3d | 11 |
 | **ElastiCache** | Managed Redis/Memcached in AWS. | Local: Redis | 05 |
+| **ETag** | A short label the server puts on a file version. A browser sends it back in `If-None-Match`; if it still matches the server answers `304 Not Modified` without the body. | AWS: S3 and CloudFront send it too · Local: Nginx | 08 |
 | **Eviction (LRU)** | What a full cache does to make room: it deletes entries. **LRU** (least recently used) deletes the ones unused the longest. | AWS: ElastiCache parameter `maxmemory-policy` · Local: `--maxmemory-policy allkeys-lru` | 05 |
 | **Failover** | Continuing to serve requests, on the remaining copies, when one copy fails. | AWS: ALB + several targets · Local: Nginx `proxy_next_upstream` | 02 |
 | **FastAPI / Uvicorn** | A Python web framework / the server that runs it. | AWS: your app code running on ECS/EKS/EC2 | 01 |
@@ -78,6 +83,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Pydantic** | A Python library that checks the shape of data (types, lengths) and converts it; FastAPI uses it to validate requests (`422` when wrong) and shape answers. | Local library (no AWS equivalent) | 04 |
 | **Queue (message queue)** | An ordered line of messages: first in, first out. It separates asking for work from doing it, absorbs spikes and lets producer and consumer fail and scale independently. | AWS: SQS · Local: a Redis list (`queue:jobs`) | 07 |
 | **RDS** | Managed relational databases (here: PostgreSQL) in AWS. | Local: Postgres container | 04 |
+| **Redirect (301)** | An answer that says "this moved" and gives the new address in `Location`; the browser goes there by itself. Used to send HTTP visitors to HTTPS. | AWS: CloudFront viewer protocol policy "Redirect HTTP to HTTPS" · Local: `return 301` in `lb/nginx.conf` | 08 |
 | **Redis** | An in-memory key-value store, used for caching and simple queues. | AWS: ElastiCache | 05 |
 | **Replica** | One of several identical copies of the same app. | AWS: several tasks/instances · Local: `docker compose` replicas | 02 |
 | **Reverse proxy** | A server that receives requests on behalf of other servers and forwards them. A load balancer is a reverse proxy that picks one of several servers. | AWS: ALB · Local: Nginx | 02 |
@@ -86,6 +92,7 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **S3 endpoint** | The address of the S3 API. SDKs and the AWS CLI use `amazonaws.com` by default; `--endpoint-url` points them at another server. | Local: `http://s3:8333` inside Docker, `http://s3.localhost` from your machine | 06 |
 | **SeaweedFS** | An open-source storage system with an S3-compatible API; the lab uses it as the local S3 because MinIO no longer publishes container images. | Local stand-in for S3 | 06 |
 | **Security group** | A firewall around a resource: who may connect to which port. | Local: Docker network membership | 03 |
+| **Self-signed certificate** | A certificate signed by its own key instead of a certificate authority; browsers refuse it until you choose to trust it (`curl --cacert`, or accept the warning). | Local: made by `make cert` with OpenSSL | 08 |
 | **Service discovery (DNS)** | Finding the servers behind a name. On a Docker network, the name of a service resolves to the addresses of its containers, and Docker's DNS (`127.0.0.11`) answers. | AWS: ECS/EKS registering targets · Local: Docker DNS + nginx `resolve` | 02 |
 | **Session (database)** | A short conversation with the database inside which changes are staged and then saved with `commit` (or dropped). The API opens one per request and closes it at the end. | Local: SQLAlchemy `Session` | 04 |
 | **SQLAlchemy** | The Python library used for the database layer: engine (connection pool), ORM models, sessions. | Local library (works the same against RDS) | 04 |
@@ -96,6 +103,8 @@ introduces. "Local" is what we use in this project instead of the AWS service.
 | **Terraform** | A tool that creates infrastructure from `.tf` files. | Local tool, pointed at an emulator | 13 |
 | **Test (shell test)** | A script that checks one behaviour of the running lab and exits 0 (pass) or non-zero (fail). `make test` runs them all. | AWS: (none) · Local: `tests/NN_*.sh` | 02 |
 | **Thumbnail** | A small copy of an image, used in lists and previews. The worker makes it with Pillow and stores it under `thumbnails/` in the bucket. | AWS: S3 + SQS + Lambda is the classic pipeline · Local: `worker` with Pillow | 07 |
+| **TLS** (Transport Layer Security) | The encryption layer under HTTPS: it encrypts the traffic, detects tampering and proves the server's identity with a certificate. | AWS: ALB HTTPS listener, CloudFront · Local: the `lb` Nginx on port 443 (published as 8443) | 08 |
+| **TLS termination** | The load balancer ends the encrypted connection and speaks plain HTTP to the servers behind it, so only one place needs the certificate. | AWS: ALB or CloudFront with an ACM certificate · Local: `lb` | 08 |
 | **tmpfs** | A folder kept in memory instead of on disk; its content disappears when the container stops. Used on Redis's `/data` so Docker does not create a hidden volume. | Local: Compose `tmpfs:` | 05 |
 | **TTL** (time to live) | How long a cached value stays valid before it expires by itself. | AWS/Redis: key expiry (`EX`, `TTL`) · Local: Redis | 05 |
 | **VPC** (Virtual Private Cloud) | Your own isolated network in AWS, divided into subnets. | Local: Docker networks | 03 |

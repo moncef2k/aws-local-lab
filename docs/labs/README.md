@@ -34,7 +34,7 @@ Terms are explained in the [glossary](../glossary.md).
 | [05](./05-caching.md) | Caching (cache-aside) | ElastiCache | ✅ done |
 | [06](./06-object-storage.md) | Object storage and presigned URLs | S3 | ✅ done |
 | [07](./07-queues-workers.md) | Queues and workers | SQS, Lambda / ECS workers | ✅ done |
-| [08](./08-frontend-cdn.md) | Static frontend and caching headers | S3 static hosting, CloudFront | 🚧 in progress |
+| [08](./08-frontend-cdn.md) | Static frontend, caching headers and local HTTPS | S3 static hosting, CloudFront, ACM | ✅ done |
 | 09 | Monitoring and logs | CloudWatch | ⬜ planned |
 | 10 | Testing an architecture, failure tests, load tests | — (k6) | ⬜ planned |
 | 11 | Kubernetes | EKS | ⬜ planned |
@@ -59,13 +59,18 @@ exact step list is in [`PLAN.md`](../../PLAN.md).
   `> 📸 TODO(you): …` in the lab, to be added by hand.
 
 ## Progress
-Updated at the end of every lab. Last update: Lab 03 done (step 9, isolation test).
+Updated at the end of every lab. Last update: Lab 08 done (step 28, local HTTPS).
 
 - [x] Course scaffolding: lab index, glossary, screenshot script
 - [x] Lab 00 — Setup: tools, repo skeleton, Makefile
 - [x] Lab 01 — Containers and the first API
 - [x] Lab 02 — Load balancing and health checks
 - [x] Lab 03 — Networking: public and private networks
+- [x] Lab 04 — Database, migrations, persistence
+- [x] Lab 05 — Caching (cache-aside)
+- [x] Lab 06 — Object storage and presigned URLs
+- [x] Lab 07 — Queues and workers
+- [x] Lab 08 — Static frontend, caching headers and local HTTPS
 - [ ] Phase 1 — Docker Compose (labs 00–10)
 - [ ] Phase 2 — Kubernetes (labs 11–12)
 - [ ] Phase 3 — Terraform and a local AWS emulator (lab 13)
