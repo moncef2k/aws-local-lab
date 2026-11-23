@@ -359,7 +359,8 @@ back and the plan updated.
 23. [x] Step 27 modules written (Caching 02 and Nginx 08).
 24. [x] Step 28 modules written (Caching 03 and FastAPI 01).
 25. [x] Step 29 modules written (Caching 04 and FastAPI 02).
-26. [ ] Next modules: see "Schedule by lab step" (step 30).
+26. [x] Step 30 modules written (Caching 05 and FastAPI 05).
+27. [ ] Next modules: see "Schedule by lab step" (step 31).
 
 ## Progress log
 _(one line per module: module, ticket, commit hash, reviewer verdict)_
@@ -410,3 +411,5 @@ _(one line per module: module, ticket, commit hash, reviewer verdict)_
 | step 28 | FastAPI 01 - How a Python web API works, and routes | AWSLAB-121 | `c48d2fa` | PASS |
 | step 29 | Caching 04 - Cache-aside and other patterns | AWSLAB-122 | `915be93` (+ fix `d84a99f`) | PASS WITH NOTES, notes fixed (length trimmed to 303) |
 | step 29 | FastAPI 02 - Uvicorn and ASGI | AWSLAB-123 | `f6c7c3b` (+ fix `059fcc9`) | PASS WITH NOTES, notes fixed (what-if now run) |
+| step 30 | Caching 05 - TTL, expiry and invalidation | AWSLAB-124 | `6acd95f` (+ fix `88af683`) | PASS WITH NOTES, notes fixed |
+| step 30 | FastAPI 05 - Automatic OpenAPI docs | AWSLAB-125 | `6979ee3` | PASS |
