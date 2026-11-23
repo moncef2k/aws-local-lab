@@ -220,7 +220,11 @@ http_requests_total{method="GET",path="/notes",status="500"} 1.0
 http_requests_total{method="GET",path="/notes",status="500"} 1.0
 http_requests_total{method="GET",path="/notes",status="500"} 1.0
 ```
-Each replica took one of the three failing requests and counted it as a `500` on the route `/notes`. This is the number that an **error-rate panel** and an alarm are built on (steps 33 and later). (After `docker compose start postgres` and about 12 s, `GET /notes` answers `200` again.)
+After `docker compose start postgres` and a 12 s wait, a new request answered:
+```text
+GET /notes -> HTTP 200
+```
+Each replica took one of the three failing requests and counted it as a `500` on the route `/notes`. This is the number that an **error-rate panel** and an alarm are built on (steps 33 and later).
 
 **Regression check — the whole suite:**
 ```bash
@@ -241,7 +245,7 @@ The first run of the suite ended with `FAIL only 59 of 60 requests succeeded wit
 - The API now **measures itself**: each request adds 1 to a counter and one observation to a histogram, in memory, inside the replica that served it. Nothing is sent anywhere yet; `GET /metrics` is just a window on those numbers.
 - The labels are **route templates and status codes**, so the number of series stays small and fixed (a handful of routes × a few statuses), however many notes exist.
 - Counters live in the **memory of one replica**: they restart at 0 when the container restarts, and three replicas give three partial answers. Putting them together is the job of **Prometheus** (step 30), which pulls every replica and adds them up; that is also why a counter is read as a **rate**, not as a raw number.
-- **Not done / to know:** `/metrics` is reachable from outside through the load balancer (`http://localhost:8088/metrics`) because the `location /` rule sends every path to the API. It exposes no secrets, but in a real system you would not publish it to users: Prometheus would read it on the private network only. We leave it for now and revisit it in step 30. The middleware only counts HTTP requests: the worker's jobs have no metrics yet.
+- **Not done / to know:** `/metrics` is reachable from outside through the load balancer (`http://localhost:8088/metrics`) because the `location /` rule sends every path to the API. It exposes no secrets, but in a real system you would not publish it to users: Prometheus would read it on the private network only. We leave it open for now: closing it (for example a `location = /metrics` that refuses outside callers in `lb/nginx.conf`) is **not** in the plan yet, and is a candidate small step if you want it. The middleware only counts HTTP requests: the worker's jobs have no metrics yet.
 
 ## 5–11. To be completed at the end of Lab 09
 Verify, Troubleshooting, Going to real AWS, Clean up, Check your understanding, Exercises and Further reading are written when the lab ends (step 35). The problems met so far:
