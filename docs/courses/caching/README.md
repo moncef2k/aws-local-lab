@@ -12,7 +12,7 @@ Back to the [course index](../README.md). Read each module next to the lab that 
 | 01 | [Why cache](./01-why-cache.md) | ✅ written | Lab 05, step 15 |
 | 02 | [Redis basics and data types](./02-redis-data-types.md) | ✅ written | Lab 05, step 15 |
 | 03 | [Eviction and `maxmemory`](./03-eviction-and-maxmemory.md) | ✅ written | Lab 05, step 15 |
-| 04 | Cache-aside and other patterns | ⬜ planned | Lab 05, step 16 |
+| 04 | [Cache-aside and other patterns](./04-cache-aside-and-patterns.md) | ✅ written | Lab 05, step 16 |
 | 05 | TTL, expiry and invalidation | ⬜ planned | Lab 05, step 16 |
 | 06 | Common pitfalls (stampede, stale data, penetration) | ⬜ planned | Lab 05, step 17 |
 

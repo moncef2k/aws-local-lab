@@ -157,7 +157,7 @@ on top of the 2-per-step cap (and with its own ticket created then).
 | 01 | Why cache | `01-why-cache.md` | step 15 (Lab 05) | step 26 | AWSLAB-116 | Redis container; the latency motivation |
 | 02 | Redis basics and data types | `02-redis-data-types.md` | step 15 (Lab 05) | step 27 | AWSLAB-118 | `redis-cli ping`; strings now, lists/hashes in step 22 |
 | 03 | Eviction and `maxmemory` | `03-eviction-and-maxmemory.md` | step 15 (Lab 05) | step 28 | AWSLAB-120 | `maxmemory` + `allkeys-lru` in the Redis config |
-| 04 | Cache-aside and other patterns | `04-cache-aside-and-patterns.md` | step 16 (Lab 05) | step 29 | - | `GET /notes/{id}` read path |
+| 04 | Cache-aside and other patterns | `04-cache-aside-and-patterns.md` | step 16 (Lab 05) | step 29 | AWSLAB-122 | `GET /notes/{id}` read path |
 | 05 | TTL, expiry and invalidation | `05-ttl-and-invalidation.md` | step 16 (Lab 05) | step 30 | - | TTL on cached notes; delete the key on PUT/DELETE |
 | 06 | Common pitfalls (stampede, stale data, penetration) | `06-pitfalls.md` | step 17 (Lab 05) | step 31 | - | Cache test; what the simple pattern does not cover |
 
