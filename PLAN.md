@@ -141,7 +141,7 @@ Nothing will be installed system-wide without asking you first.
 ### Lab 09 — Monitoring (CloudWatch) · epic `AWSLAB-13`
 - [x] **29. API `/metrics`.** `AWSLAB-47` `prometheus-client` middleware (request count, latency histogram, errors). *Check:* `curl /metrics` shows `http_requests_total`.
 - [x] **30. Prometheus.** `AWSLAB-48` Scrapes all 3 replicas through Docker DNS service discovery. *Check:* `/targets` shows 3 up (screenshot).
-- [ ] **31. cAdvisor.** `AWSLAB-49` Per-container CPU/RAM metrics (may need Docker Desktop/WSL2 tweaks — will explain if not). *Check:* `container_cpu_usage_seconds_total` returns series.
+- [x] **31. cAdvisor.** `AWSLAB-49` Per-container CPU/RAM metrics (may need Docker Desktop/WSL2 tweaks — will explain if not). *Check:* `container_cpu_usage_seconds_total` returns series.
 - [ ] **32. Grafana + datasource provisioning.** `AWSLAB-50` Behind LB at `grafana.localhost`, admin password from `.env`. *Check:* login works, Prometheus datasource green.
 - [ ] **33. Dashboard (1/2).** `AWSLAB-51` Provisioned JSON: request rate, p95 latency, error rate. *Check:* panels show data under curl traffic (screenshot).
 - [ ] **34. Dashboard (2/2).** `AWSLAB-52` CPU and RAM per container panels. *Check:* panels populated (screenshot).

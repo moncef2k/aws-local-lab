@@ -132,6 +132,35 @@ services:
       retries: 3
       start_period: 5s
 
+  # Per-container CPU, memory and network numbers (Container Insights in AWS). cAdvisor reads them from
+  # the kernel's cgroups through read-only views of the host (here: the Docker Desktop VM). Prometheus
+  # scrapes it (monitoring/prometheus/prometheus.yml); no published port.
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    command:
+      # Only containers (not every system service), and only the three groups of metrics we use:
+      # fewer series for Prometheus to store.
+      - --docker_only=true
+      - --enable_metrics=cpu,memory,network
+      - --housekeeping_interval=10s
+      # Without this every series would carry ~15 labels copied from the container; keep two.
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   # The database (RDS in AWS). Private network only, and no "ports:" at all: nothing on the
   # host can reach it, only containers on "private" (the API will, from step 11 on).
   postgres:
